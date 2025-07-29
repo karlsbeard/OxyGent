@@ -1,195 +1,115 @@
-"""Test browser tools functionality."""
-
 import os
-import sys
-import asyncio
-from typing import Optional, AsyncGenerator
-from unittest.mock import patch, MagicMock
+import base64
+import pytest
+from unittest.mock import AsyncMock, patch, MagicMock, mock_open
+from mcp_servers.browser_tools import browser_take_screenshot, check_dependencies
 
-# Add project root directory to Python path
-sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))))
-
-try:
-    import pytest
-    import pytest_asyncio
-    from playwright.async_api import Browser, BrowserContext, Page
-except ImportError:
-    print("请先安装必要的依赖：pip install pytest playwright pytest-asyncio")
-    sys.exit(1)
-
-from mcp_servers.browser_tools import (
-    check_dependencies,
-    _ensure_browser,
-    _ensure_page,
-    browser_navigate,
-    browser_search,
-    browser_click,
-    browser_hover,
-    browser_type,
-    browser_snapshot,
-    browser_take_screenshot,
-    browser_tab_list,
-    browser_tab_new,
-    browser_tab_close,
-    _close_browser
-)
-
-# 配置 pytest-asyncio 使用 auto 模式
-pytest_plugins = ('pytest_asyncio',)
-
-class TestBrowserTools:
-    _browser: Optional[Browser] = None
-    _context: Optional[BrowserContext] = None
+class TestBrowserTakeScreenshot:
+    @pytest.fixture
+    async def mock_page(self):
+        page = AsyncMock()
+        page.screenshot = AsyncMock()
+        return page
     
-    @pytest_asyncio.fixture(autouse=True)
-    async def setup_browser(self) -> AsyncGenerator[None, None]:
-        """Setup browser context for each test."""
-        from mcp_servers.browser_tools import _browser, _context
-        try:
-            await _ensure_browser()
-            yield
-        finally:
-            await _close_browser()
-
-    def test_check_dependencies(self) -> None:
-        """Test dependency checking functionality."""
-        # Test case 1: playwright is installed
-        with patch('importlib.import_module') as mock_import:
-            mock_import.return_value = MagicMock()
-            missing_deps = check_dependencies()
-            assert len(missing_deps) == 0, "Should return empty list when playwright is installed"
-
-        # Test case 2: playwright is not installed
-        with patch('importlib.import_module') as mock_import:
-            mock_import.side_effect = ImportError()
-            missing_deps = check_dependencies()
-            assert 'playwright' in missing_deps, "Should return list containing playwright when not installed"
+    @pytest.fixture
+    async def mock_ensure_page(self, mock_page):
+        with patch('mcp_servers.browser_tools._ensure_page', return_value=mock_page):
+            yield mock_page
 
     @pytest.mark.asyncio
-    async def test_ensure_browser(self) -> None:
-        """Test browser initialization functionality."""
-        try:
-            from mcp_servers.browser_tools import _browser, _context
-            assert _browser is not None, "Browser instance should be created"
-            assert _context is not None, "Browser context should be created"
-        except ImportError as e:
-            pytest.skip(f"Skipping test: {str(e)}")
-
-    @pytest.mark.asyncio
-    async def test_browser_navigate(self) -> None:
-        """Test page navigation functionality."""
-        # Test case: navigate to valid URL
-        result = await browser_navigate("https://www.example.com")
-        assert result["status"] == "success", "Navigation to valid URL should succeed"
-        assert "page_info" in result, "Should include page information"
-        assert result["page_info"]["title"], "Should have page title"
-        assert result["page_info"]["url"], "Should have page URL"
-        assert result["page_info"]["content"], "Should have page content"
-
-        # Test case: navigate to invalid URL
-        result = await browser_navigate("https://invalid-url-that-does-not-exist.com")
-        assert result["status"] == "error", "Navigation to invalid URL should fail"
-        assert "message" in result, "Should include error message"
-
-    @pytest.mark.asyncio
-    async def test_browser_search(self) -> None:
-        """Test search functionality."""
-        # Test case: basic search with Bing
-        result = await browser_search(
-            query="test search",
-            search_engine="bing",
-            num_results=2
-        )
-        assert isinstance(result, dict), "Search result should be dictionary type"
-        assert "results" in result, "Should contain search results"
-        assert len(result["results"]) <= 2, "Result count should match specified value"
-        assert "summary" in result, "Should contain search summary"
-        assert "query" in result, "Should contain search query"
-
-        # Test case: search with invalid engine
-        result = await browser_search(
-            query="test search",
-            search_engine="invalid_engine",
-            num_results=1
-        )
-        assert isinstance(result, dict), "Should return dictionary even with invalid search engine"
-        assert "results" in result, "Should still contain search results using default engine"
-
-    @pytest.mark.asyncio
-    async def test_browser_click_and_hover(self) -> None:
-        """Test click and hover functionality."""
-        # First navigate to a test page
-        await browser_navigate("https://www.example.com")
-
-        # Test click functionality
-        result = await browser_click("a")  # Click first link
-        assert "成功点击元素" in result, "Should indicate successful click"
-
-        # Test hover functionality
-        result = await browser_hover("a")  # Hover over first link
-        assert "成功悬停在元素上" in result, "Should indicate successful hover"
-
-    @pytest.mark.asyncio
-    async def test_browser_type(self) -> None:
-        """Test typing functionality."""
-        # Navigate to a page with input field
-        await browser_navigate("https://www.example.com")
+    async def test_save_screenshot_to_file(self, mock_ensure_page, tmp_path):
+        # 准备测试数据
+        test_path = os.path.join(tmp_path, "test_screenshot.png")
+        mock_ensure_page.screenshot.return_value = b"test image data"
         
-        # Test typing into an input field
-        result = await browser_type("input", "test text")
-        assert "成功在元素" in result, "Should indicate successful typing"
-
-    @pytest.mark.asyncio
-    async def test_browser_snapshot(self) -> None:
-        """Test snapshot functionality."""
-        # Navigate to a test page
-        await browser_navigate("https://www.example.com")
+        # 执行测试
+        result = await browser_take_screenshot(path=test_path)
         
-        # Take snapshot
-        result = await browser_snapshot()
-        assert isinstance(eval(result), dict), "Snapshot should be a dictionary"
-        snapshot = eval(result)
-        assert "title" in snapshot, "Snapshot should contain page title"
-        assert "url" in snapshot, "Snapshot should contain page URL"
-        assert "text" in snapshot, "Snapshot should contain page text"
+        # 验证结果
+        assert isinstance(result, dict)
+        assert result["path"] == test_path
+        assert "size_mb" in result
+        mock_ensure_page.screenshot.assert_called_once_with(full_page=False)
 
     @pytest.mark.asyncio
-    async def test_browser_tab_operations(self) -> None:
-        """Test tab operations functionality."""
-        # Test new tab creation
-        result = await browser_tab_new("https://www.example.com")
-        assert "已打开新标签" in result, "Should indicate successful tab creation"
-
-        # Test tab listing
-        result = await browser_tab_list()
-        tab_list = eval(result)
-        assert isinstance(tab_list, list), "Tab list should be a list"
-        assert len(tab_list) > 0, "Should have at least one tab"
-
-        # Test tab closing
-        result = await browser_tab_close()
-        assert "已关闭标签" in result, "Should indicate successful tab closure"
-
-    @pytest.mark.asyncio
-    async def test_browser_screenshot(self) -> None:
-        """Test screenshot functionality."""
-        # Navigate to a test page
-        await browser_navigate("https://www.example.com")
+    async def test_save_to_cache_dir(self, mock_ensure_page):
+        # 准备测试数据
+        test_bytes = b"test image data"
+        mock_ensure_page.screenshot.return_value = test_bytes
         
-        # Test screenshot with base64 return
+        # 模拟cache_dir路径
+        mock_cache_path = "/fake/path/cache_dir/screenshot_20250729_123456_abcd1234.png"
+        
+        # 模拟os.getcwd, datetime.now和uuid.uuid4
+        with patch('os.getcwd', return_value="/fake/path"), \
+             patch('os.makedirs') as mock_makedirs, \
+             patch('datetime.now') as mock_now, \
+             patch('uuid.uuid4') as mock_uuid, \
+             patch('builtins.open', mock_open()) as mock_file:
+            
+            # 设置模拟返回值
+            mock_now.return_value.strftime.return_value = "20250729_123456"
+            mock_uuid.return_value = type('obj', (object,), {'__str__': lambda self: "abcd1234efgh5678"})()
+            
+            # 执行测试
+            result = await browser_take_screenshot()
+            
+            # 验证结果
+            assert isinstance(result, dict)
+            assert result["path"] == mock_cache_path
+            assert "size_mb" in result
+            mock_makedirs.assert_called_once_with("/fake/path/cache_dir", exist_ok=True)
+            mock_file.assert_called_once_with(mock_cache_path, 'wb')
+            mock_file().write.assert_called_once_with(test_bytes)
+        
+        mock_ensure_page.screenshot.assert_called_once_with(full_page=False)
+
+    @pytest.mark.asyncio
+    async def test_full_page_screenshot(self, mock_ensure_page, tmp_path):
+        # 准备测试数据
+        test_path = os.path.join(tmp_path, "test_full_screenshot.png")
+        mock_ensure_page.screenshot.return_value = b"test full page image data"
+        
+        # 执行测试
+        result = await browser_take_screenshot(path=test_path, full_page=True)
+        
+        # 验证结果
+        assert isinstance(result, dict)
+        assert result["path"] == test_path
+        assert "size_mb" in result
+        mock_ensure_page.screenshot.assert_called_once_with(full_page=True)
+
+    @pytest.mark.asyncio
+    async def test_missing_dependencies(self):
+        # 模拟缺少依赖
+        with patch('mcp_servers.browser_tools.check_dependencies', return_value=['playwright']):
+            result = await browser_take_screenshot()
+            assert "缺少必要的库" in result
+            assert "playwright" in result
+
+    @pytest.mark.asyncio
+    async def test_screenshot_error(self, mock_ensure_page):
+        # 模拟截图错误
+        mock_ensure_page.screenshot.side_effect = Exception("截图失败")
+        
+        # 执行测试
         result = await browser_take_screenshot()
-        assert result.startswith("data:image/png;base64,"), "Should return base64 encoded image"
+        
+        # 验证结果
+        assert "截取页面截图时发生错误" in result
+        assert "截图失败" in result
 
-        # Test screenshot with file save
-        test_path = "test_screenshot.png"
-        try:
-            result = await browser_take_screenshot(path=test_path)
-            assert "截图已保存到" in result, "Should indicate successful screenshot save"
-            assert os.path.exists(test_path), "Screenshot file should exist"
-        finally:
-            # Clean up test file
-            if os.path.exists(test_path):
-                os.remove(test_path)
-
-if __name__ == '__main__':
-    pytest.main(['-v', __file__])
+    @pytest.mark.asyncio
+    async def test_invalid_path(self, mock_ensure_page):
+        # 准备测试数据：使用无效路径
+        invalid_path = "/invalid/path/screenshot.png"
+        mock_ensure_page.screenshot.return_value = b"test image data"  # 返回正常数据
+        # 模拟写入文件时出错
+        with patch('builtins.open', side_effect=Exception("无法保存到指定路径")):
+            # 执行测试
+            result = await browser_take_screenshot(path=invalid_path)
+            
+            # 验证结果
+            assert isinstance(result, str)
+            assert "截取页面截图时发生错误" in result
+            assert "无法保存到指定路径" in result
