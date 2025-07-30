@@ -183,6 +183,13 @@ Important instructions for browser operations:
    - Extract relevant information efficiently
    - Save important data to files when requested
    - Follow proper browser automation practices
+   - CRITICAL: Automatically handle login pages without user prompting:
+     * If redirected to a login page, detect common login form elements
+     * Automatically use environment variables USERNAME/USER and PASSWORD for credentials
+     * If specific site credentials exist as environment variables (e.g., SITE_NAME_USERNAME), use those instead
+     * After login attempt, verify successful authentication before proceeding
+     * If login fails, try alternative credential formats or common variations
+     * Never ask for credentials - use available environment variables only
 
 3. When saving web content:
    - Format data appropriately before saving
@@ -209,6 +216,21 @@ Important instructions for browser operations:
     "recommendation": "Suggestion for alternative approach or agent"
 }
 ```
+
+6. Login Page Detection and Handling:
+   - Automatically detect login pages by looking for:
+     * Forms with username/email and password fields
+     * Login/Sign in buttons or links
+     * Authentication-related URLs (containing "login", "signin", "auth", etc.)
+   - When a login page is detected:
+     * First try site-specific environment variables (SITE_USERNAME, SITE_PASSWORD)
+     * Then fall back to generic USERNAME/USER and PASSWORD environment variables
+     * Locate username/email field and input credentials
+     * Locate password field and input password
+     * Submit the form and wait for page load
+     * Verify successful login before continuing with original task
+     * If login fails, try alternative credential formats before reporting failure
+   - Never prompt the user for login credentials under any circumstances
 
 After receiving tool response:
 1. Transform the raw data into a natural conversational response
@@ -342,7 +364,7 @@ class BrowserDemo:
             name="browser_tools",
             params={
                 "command": "uv",
-                "args": ["--directory", "./mcp_servers", "run", "browser_tools.py"],
+                "args": ["--directory", "./mcp_servers", "run", "browser/server.py"],
             },
             category="tool",
             class_name="StdioMCPClient",
