@@ -1,3 +1,35 @@
+## 如何进行检索增强生成？
+
+OxyGent支持通过`knowledge`参数向prompts注入知识。以下将展示一个最简单的RAG示例：
+
+如果您还没有学习如何处理提示词，建议阅读[如何自定义处理提示词？](./8_update_prompts.md)。
+
+您需要先创建一个`retrieval`方法：
+
+```python
+def retrieval(query):
+    # 替换为实际的数据库
+    return "\n".join(["knowledge1", "knowledge2", "knowledge3"])
+```
+
+然后，需要在`update_query`中将检索的知识进行注入：
+
+```python
+def update_query(oxy_request: OxyRequest):
+    current_query = oxy_request.get_query()
+
+    def retrieval(query):
+        return "\n".join(["knowledge1", "knowledge2", "knowledge3"])
+
+    oxy_request.arguments["knowledge"] = retrieval(current_query) # 关键方法
+    return oxy_request
+```
+
+## 完整的可运行样例
+
+以下是可运行的完整代码示例：
+
+```python
 import asyncio
 
 from oxygent import MAS, OxyRequest, oxy
@@ -22,7 +54,7 @@ Your response content
 <think>Your reasoning (if analysis is needed)</think>
 Your follow-up question to the user
 3. When you need to use a tool, you must respond **only** with the following exact JSON object format, and nothing else:
-```json
+
 {
     "think": "Your reasoning (if analysis is needed)",
     "tool_name": "Tool name",
@@ -69,16 +101,12 @@ async def main():
             first_query="This is an example for rag. Please modify it according to the specific needs",
         )
 
-
-async def test():
-    async with MAS(oxy_space=oxy_space) as mas:
-        out = await mas.chat_with_agent(
-            payload={
-                "query": "This is an example for rag. Please modify it according to the specific needs"
-            }
-        )
-        print(out)
-
-
 if __name__ == "__main__":
     asyncio.run(main())
+
+```
+
+
+[上一章：使用多模态智能体](./10_multimodal.md)
+[下一章：生成训练样本](./13_training.md)
+[回到首页](./readme.md)

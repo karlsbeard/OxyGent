@@ -40,12 +40,29 @@ class HttpLLM(RemoteLLM):
         """
         use_openai = self.api_key is not None
         url = self.base_url.rstrip("/")
+        if use_openai:
+            if not url.endswith("/chat/completions"):
+                url = f"{url}/chat/completions"
+        else:
+            if not url.endswith("/api/chat"): # only support ollama
+                url = f"{url}/api/chat"
         headers = {"Content-Type": "application/json"}
         if use_openai:
             headers["Authorization"] = f"Bearer {self.api_key}"
 
         # Construct payload for the API request
-        llm_config = Config.get_llm_config()
+        llm_config = {
+            k: v
+            for k, v in Config.get_llm_config().items()
+            if k
+            not in {
+                "cls",
+                "base_url",
+                "api_key",
+                "name",
+                "model_name",
+            }
+        }
         payload = {
             "messages": await self._get_messages(oxy_request),
             "model": self.model_name,
