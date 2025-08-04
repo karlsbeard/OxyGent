@@ -33,6 +33,12 @@ class OxyState(Enum):  # The status of the node (oxy)
     SKIPPED = auto()
     CANCELED = auto()
 
+def _filter_shared_data_for_storage(shared_data: dict) -> dict:
+    schema = Config.get_shared_data_schema()
+    if not schema:
+        return {}
+    return {k: v for k, v in shared_data.items() if k in schema}
+
 
 class OxyRequest(BaseModel):
     """Envelope for a single MAS task invocation.

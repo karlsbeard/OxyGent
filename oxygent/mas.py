@@ -18,6 +18,7 @@ NOTE: This module contains the following parts:
 # from __future__ import annotations
 
 import asyncio
+import datetime
 import json
 import os
 import traceback
@@ -45,7 +46,8 @@ from .oxy.llms.base_llm import BaseLLM
 from .oxy.mcp_tools.base_mcp_client import BaseMCPClient
 from .routes import router
 from .schemas import OxyRequest, OxyResponse, WebResponse
-from .utils.common_utils import msgpack_preprocess, print_tree, to_json
+from .schemas.oxy import _filter_shared_data_for_storage
+from .utils.common_utils import msgpack_preprocess, print_tree, to_json, validate_table_file
 
 logger = None
 load_dotenv(Config.get_env_path(), override=Config.get_env_is_override())
@@ -276,6 +278,12 @@ class MAS(BaseModel):
                         }
                     }
                 },
+            )
+        sd_schema = Config.get_shared_data_schema()
+        if sd_schema:
+            await self.es_client.create_index(
+                Config.get_app_name() + "_shared_data",
+                {"mappings": {"properties": sd_schema}},
             )
         await self.es_client.create_index(
             Config.get_app_name() + "_node",
@@ -639,6 +647,20 @@ class MAS(BaseModel):
                 oxy_request.callee = self.master_agent_name
 
             answer = await oxy_request.start()
+
+            filtered_sd = _filter_shared_data_for_storage(payload.get("shared_data", {}))
+            if filtered_sd:
+                filtered_sd.update(
+                    {
+                        "trace_id": answer.oxy_request.current_trace_id,
+                        "create_time": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f"),
+                    }
+                )
+                await self.es_client.index(
+                    index=Config.get_app_name() + "_shared_data",
+                    body=filtered_sd,
+                )
+
             if send_msg_key:
                 await self.send_message(
                     {"event": "close", "data": "done"}, send_msg_key

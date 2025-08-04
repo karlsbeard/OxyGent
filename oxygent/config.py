@@ -71,6 +71,7 @@ class Config:
         "vearch": {},
         "es": {},
         "redis": {},
+        "schema": {},
         "server": {
             "host": "127.0.0.1",
             "port": 8080,
@@ -98,6 +99,8 @@ class Config:
         if "default" in all_cfg:
             cfg = replace_env_var(all_cfg["default"])
             deep_update(cls._config, cfg)
+        if "schema" in all_cfg.get(env, {}):
+            cls.set_schema_config(all_cfg[env]["schema"])
         # Merge assigned env
         if env in all_cfg:
             cfg = replace_env_var(all_cfg[env])
@@ -479,3 +482,17 @@ class Config:
     @classmethod
     def get_agent_input_schema(cls):
         return cls.get_module_config("agent", "input_schema")
+    
+    """ schema """
+
+    @classmethod
+    def set_schema_config(cls, schema_config: dict):
+        cls.set_module_config("schema", schema_config or {})
+
+    @classmethod
+    def get_schema_config(cls) -> dict:
+        return cls.get_module_config("schema")
+
+    @classmethod
+    def get_shared_data_schema(cls) -> dict:
+        return cls.get_schema_config().get("shared_data", {})

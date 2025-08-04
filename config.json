@@ -35,6 +35,12 @@
         },
         "vearch": {},
         "es": {},
+        "schema": {
+            "shared_data": {
+                "conversation_step": { "type": "keyword" },
+                "user_id": { "type": "keyword" }
+            }
+        },
         "redis": {},
         "server": {
             "host": "127.0.0.1",
