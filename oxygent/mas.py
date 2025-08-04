@@ -83,6 +83,8 @@ class MAS(BaseModel):
 
     message_prefix: str = Field("oxygent")
 
+    global_data: dict = Field(default_factory=dict, description="system-wide global data")
+
     def __init__(self, **kwargs):
         """Construct a new :class:`MAS`.
 
@@ -145,6 +147,19 @@ class MAS(BaseModel):
         logger.info(f"Start Time   : {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
         logger.info("=" * 64)
 
+    def init_global_data(self, initial: dict | None = None):
+        """
+        Initialise the in-memory global data store.
+        """
+        if initial:
+            self.global_data.update(initial)
+
+    def get_global(self, key, default=None):
+        return self.global_data.get(key, default)
+
+    def set_global(self, key, value):
+        self.global_data[key] = value
+
     def add_oxy(self, oxy: Oxy):
         """Register a single Oxy object.
 
@@ -184,6 +199,7 @@ class MAS(BaseModel):
         """
         self.show_banner()
         self.show_mas_info()
+        self.init_global_data()
         # Register default oxy_space
         self.add_oxy_list(self.oxy_space)
         if Config.get_vearch_config():

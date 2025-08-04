@@ -24,6 +24,7 @@
 ## 设置
 + [设置OxyGent Config](./3_set_config.md)*
 + [设置数据库](./3_1_set_database.md)
++ [设置全局数据](./3_2_set_global.md)
 
 ## 多智能体系统
 + [创建简单的多agent系统](./6_register_multi_agent.md)*

@@ -356,6 +356,20 @@ class OxyRequest(BaseModel):
     def get_short_memory(self, master_level=False):
         var_short_memory = "master_short_memory" if master_level else "short_memory"
         return self.arguments.get(var_short_memory, [])
+    
+    def get_global(self, key, default=None):
+        if self.mas:
+            return self.mas.get_global(key, default)
+        return default
+
+    def set_global(self, key, value):
+        if self.mas:
+            self.mas.set_global(key, value)
+
+    def get_all_global(self) -> dict:
+        if self.mas:
+            return self.mas.global_data
+        return {}
 
 
 class OxyResponse(BaseModel):

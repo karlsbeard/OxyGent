@@ -108,6 +108,6 @@ if __name__ == "__main__":
     asyncio.run(main())
 ```
 
-[上一章：设置数据库](./3_1_set_database.md)
+[上一章：设置全局数据](./3_2_set_global.md)
 [下一章：复制相同智能体](./6_1_moa.md)
 [回到首页](./readme.md)

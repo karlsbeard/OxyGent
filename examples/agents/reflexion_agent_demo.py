@@ -72,7 +72,7 @@ Improvement Suggestions: [If unsatisfactory, provide specific improvement sugges
                 break
         
         if improvement_suggestion:
-            user_query = f"{oxy_request.get_query(master_level=True)}\n\nPlease note the following improvement suggestions: {improvement_suggestion}"
+            user_query = f"{oxy_request.get_query(master_level=True)}\n\nThe result was: {reflexion_result}. Please note the following improvement suggestions: {improvement_suggestion}"
             print(f"Updated query with improvement suggestions:\n{user_query}\n")
     
     # Reached maximum iterations
@@ -144,7 +144,7 @@ Correction Suggestions: [Specific correction suggestions]
                 break
         
         if correction_suggestion:
-            user_query = f"{oxy_request.get_query(master_level=True)}\n\nPlease note the following correction suggestions: {correction_suggestion}"
+            user_query = f"{oxy_request.get_query(master_level=True)}\n\nThe result was: {checker_result}. Please note the following correction suggestions: {correction_suggestion}"
     
     return f"Answer after {max_iterations} rounds of mathematical validation:\n\n{math_answer}"
 
