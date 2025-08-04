@@ -47,7 +47,7 @@ from .oxy.mcp_tools.base_mcp_client import BaseMCPClient
 from .routes import router
 from .schemas import OxyRequest, OxyResponse, WebResponse
 from .schemas.oxy import _filter_shared_data_for_storage
-from .utils.common_utils import msgpack_preprocess, print_tree, to_json, validate_table_file
+from .utils.common_utils import msgpack_preprocess, print_tree, to_json
 
 logger = None
 load_dotenv(Config.get_env_path(), override=Config.get_env_is_override())
