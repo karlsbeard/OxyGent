@@ -38,43 +38,67 @@ class HttpLLM(RemoteLLM):
         Returns:
             OxyResponse: The response containing the LLM's output with COMPLETED state.
         """
-        use_openai = self.api_key is not None
+        
         url = self.base_url.rstrip("/")
-        if use_openai:
+        is_gemini = "generativelanguage.googleapis.com" in url
+        use_openai = (self.api_key is not None) and (not is_gemini)
+        if is_gemini:                                                    
+            if not url.endswith(":generateContent"):
+                url = f"{url}/models/{self.model_name}:generateContent"
+        elif use_openai:
             if not url.endswith("/chat/completions"):
                 url = f"{url}/chat/completions"
         else:
             if not url.endswith("/api/chat"): # only support ollama
                 url = f"{url}/api/chat"
+
         headers = {"Content-Type": "application/json"}
-        if use_openai:
+        if is_gemini:                                                    
+            headers["X-goog-api-key"] = self.api_key
+        elif use_openai:
             headers["Authorization"] = f"Bearer {self.api_key}"
 
         # Construct payload for the API request
-        llm_config = {
-            k: v
-            for k, v in Config.get_llm_config().items()
-            if k
-            not in {
-                "cls",
-                "base_url",
-                "api_key",
-                "name",
-                "model_name",
+        if is_gemini:                                                    
+            raw_msgs = await self._get_messages(oxy_request)
+            contents = [
+                {
+                    "role": ("user" if m["role"] == "user" else "model"),
+                    "parts": [{"text": m["content"]}],
+                }
+                for m in raw_msgs
+                if m.get("content")
+            ]
+            payload: dict = {"contents": contents}
+            payload.update(self.llm_params)
+            for k, v in oxy_request.arguments.items():
+                if k != "messages":
+                    payload[k] = v
+        else: 
+            llm_config = {
+                k: v
+                for k, v in Config.get_llm_config().items()
+                if k
+                not in {
+                    "cls",
+                    "base_url",
+                    "api_key",
+                    "name",
+                    "model_name",
+                }
             }
-        }
-        payload = {
-            "messages": await self._get_messages(oxy_request),
-            "model": self.model_name,
-            "stream": False,
-        }
-        payload.update(llm_config)
-        for k, v in self.llm_params.items():
-            payload[k] = v
-        for k, v in oxy_request.arguments.items():
-            if k == "messages":
-                continue
-            payload[k] = v
+            payload = {
+                "messages": await self._get_messages(oxy_request),
+                "model": self.model_name,
+                "stream": False,
+            }
+            payload.update(llm_config)
+            for k, v in self.llm_params.items():
+                payload[k] = v
+            for k, v in oxy_request.arguments.items():
+                if k == "messages":
+                    continue
+                payload[k] = v
 
         async with httpx.AsyncClient(timeout=self.timeout) as client:
             http_response = await client.post(
@@ -84,9 +108,14 @@ class HttpLLM(RemoteLLM):
             data = http_response.json()
             if "error" in data:
                 error_message = data["error"].get("message", "Unknown error")
-                raise ValueError(f"LLM API error: {error_message}")
-            
-            if use_openai:
+                raise ValueError(f"LLM API error: {error_message}") 
+            if is_gemini:                                    
+                result = (
+                    data["candidates"][0]["content"]["parts"][0].get("text", "")
+                    if data.get("candidates")
+                    else ""
+                )
+            elif use_openai:
                 response_message = data["choices"][0]["message"]
                 result = response_message.get("content") or response_message.get(
                     "reasoning_content"
