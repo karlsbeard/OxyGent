@@ -296,11 +296,6 @@ class MAS(BaseModel):
                 },
             )
         sd_schema = Config.get_shared_data_schema()
-        if sd_schema:
-            await self.es_client.create_index(
-                Config.get_app_name() + "_shared_data",
-                {"mappings": {"properties": sd_schema}},
-            )
         await self.es_client.create_index(
             Config.get_app_name() + "_node",
             {
@@ -329,6 +324,9 @@ class MAS(BaseModel):
                             "format": "yyyy-MM-dd HH:mm:ss.SSSSSSSSS",
                             "type": "date",
                         },
+                        "shared_data": {
+                            "properties": sd_schema,
+                        }
                     }
                 }
             },
@@ -672,9 +670,10 @@ class MAS(BaseModel):
                         "create_time": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f"),
                     }
                 )
-                await self.es_client.index(
-                    index=Config.get_app_name() + "_shared_data",
-                    body=filtered_sd,
+                await self.es_client.update(
+                    index=Config.get_app_name() + "_node",
+                    id=answer.oxy_request.node_id,
+                    body={"doc": {"shared_data": filtered_sd}},
                 )
 
             if send_msg_key:
