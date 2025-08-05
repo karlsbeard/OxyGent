@@ -660,6 +660,16 @@ class MAS(BaseModel):
             if not oxy_request.callee:
                 oxy_request.callee = self.master_agent_name
 
+            if oxy_request.callee not in self.oxy_name_to_oxy:
+                await self.send_message(
+                    {"type": "error", "data": "callee is not exists."}, send_msg_key
+                )
+                if send_msg_key:
+                    await self.send_message(
+                        {"event": "close", "data": "done"}, send_msg_key
+                    )
+                return "callee is not exists."
+
             answer = await oxy_request.start()
 
             filtered_sd = _filter_shared_data_for_storage(payload.get("shared_data", {}))
