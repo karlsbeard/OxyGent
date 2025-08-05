@@ -876,7 +876,7 @@ class MAS(BaseModel):
                 payload = await request.json()
 
             if "query" not in payload:
-                return WebResponse(code=400, message="query is required").to_dict()
+                payload["query"] = ""
 
             if "attachments" in payload:
                 attachments_with_path = []

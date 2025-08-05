@@ -18,6 +18,7 @@ from pydantic import BaseModel, Field
 # from ..mas import MAS
 from ..config import Config
 from ..schemas import OxyRequest, OxyResponse, OxyState
+from ..schemas.oxy import _filter_shared_data_for_storage
 from ..utils.common_utils import filter_json_types, get_format_time, get_md5, to_json
 
 logger = logging.getLogger(__name__)
@@ -311,6 +312,7 @@ class Oxy(BaseModel, ABC):
                     "node_id_stack": oxy_request.node_id_stack,
                     "pre_node_ids": oxy_request.pre_node_ids,
                     "create_time": get_format_time(),
+                    "shared_data": _filter_shared_data_for_storage(oxy_request.shared_data),
                 },
             )
         else:
