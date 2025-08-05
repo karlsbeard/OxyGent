@@ -13,7 +13,7 @@ from typing import Optional
 from pydantic import Field
 
 from ...schemas import OxyRequest, OxyResponse
-from ...utils.common_utils import extract_first_json, image_to_base64, video_to_base64
+from ...utils.common_utils import extract_first_json, image_to_base64, video_to_base64, file_to_base64
 from ..base_oxy import Oxy
 
 logger = logging.getLogger(__name__)
@@ -66,36 +66,66 @@ class BaseLLM(Oxy):
         default=12 * 1024 * 1024,
         description="Maximum video file size in bytes (default: 12MB).",
     )
+    max_file_size_bytes: int = Field(
+        default=2 * 1024 * 1024,
+        description="Maximum non-media file size (bytes) for base64 embedding.",
+    )
 
     async def _get_messages(self, oxy_request: OxyRequest):
         """Preprocess messages for multimoding input."""
-        if self.is_convert_url_to_base64:
-            messages_processed = copy.deepcopy(oxy_request.arguments["messages"])
-            for message in messages_processed:
-                if not isinstance(message["content"], list):
+        if not self.is_convert_url_to_base64:
+            return oxy_request.arguments["messages"]
+
+        messages_processed = copy.deepcopy(oxy_request.arguments["messages"])
+
+        for message in messages_processed:
+            if not isinstance(message["content"], list):
+                continue
+
+            for item in message["content"]:
+                item_type = item["type"]
+                if item_type == "text":
                     continue
-                for item in message["content"]:
-                    item_type = item["type"]
-                    if item_type == "text":
-                        continue
-                    elif item_type == "image_url":
-                        item[item_type]["url"] = await image_to_base64(
-                            item[item_type]["url"], self.max_image_pixels
+
+                if item_type == "image_url":
+                    item[item_type]["url"] = await image_to_base64(
+                        item[item_type]["url"], self.max_image_pixels
+                    )
+
+                elif item_type == "video_url":
+                    item[item_type]["url"] = await video_to_base64(
+                        item[item_type]["url"], self.max_video_size
+                    )
+
+                elif item_type in {
+                    "table_file",
+                    "doc_file",
+                    "pdf_file",
+                    "code_file",
+                    "file",
+                }:
+                    try:
+                        item[item_type]["url"] = await file_to_base64(
+                            item[item_type]["url"], self.max_file_size_bytes
                         )
-                    elif item_type == "video_url":
-                        item[item_type]["url"] = await video_to_base64(
-                            item[item_type]["url"], self.max_video_size
-                        )
-                    else:
+                    except Exception as e:
                         logger.warning(
-                            f"Unexpected content type: {item_type}",
+                            f"Failed to base64-embed {item_type}: {e}",
                             extra={
                                 "trace_id": oxy_request.current_trace_id,
                                 "node_id": oxy_request.node_id,
                             },
                         )
-            return messages_processed
-        return oxy_request.arguments["messages"]
+                else:
+                    logger.warning(
+                        f"Unexpected content type: {item_type}",
+                        extra={
+                            "trace_id": oxy_request.current_trace_id,
+                            "node_id": oxy_request.node_id,
+                        },
+                    )
+
+        return messages_processed
 
     async def _execute(self, oxy_request: OxyRequest) -> OxyResponse:
         """Execute the LLM request."""

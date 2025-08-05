@@ -372,9 +372,10 @@ class ReActAgent(LocalAgent):
                         "trust_mode" in llm_response.output
                         and llm_response.output["trust_mode"] == 1
                     ):
+                        result_payload = observation.to_content(self.is_multimodal_supported)
                         return OxyResponse(
                             state=OxyState.COMPLETED,
-                            output=observation.to_str(),
+                            output=result_payload,
                             extra={"react_memory": react_memory.to_dict_list()},
                         )
 

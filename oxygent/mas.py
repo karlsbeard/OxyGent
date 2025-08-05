@@ -890,16 +890,23 @@ class MAS(BaseModel):
 
             if "attachments" in payload:
                 attachments_with_path = []
+                remote_urls = []  
+
                 for attachment in payload["attachments"]:
-                    if attachment.startswith("http"):
-                        attachments_with_path.append(attachment)
-                    else:
-                        attachments_with_path.append(
-                            os.path.join(
-                                Config.get_cache_save_dir(), "uploads", attachment
-                            )
-                        )
+                    is_remote = attachment.startswith(("http://", "https://"))
+                    file_path = (
+                        attachment
+                        if is_remote
+                        else os.path.join(Config.get_cache_save_dir(), "uploads", attachment)
+                    )
+                    attachments_with_path.append(file_path)
+                    if is_remote:
+                        remote_urls.append(file_path)
+
                 payload["attachments"] = attachments_with_path
+                if remote_urls:
+                    existing_urls = payload.get("web_file_url_list", [])
+                    payload["web_file_url_list"] = list(dict.fromkeys(existing_urls + remote_urls))
 
             if "current_trace_id" not in payload:
                 payload["current_trace_id"] = shortuuid.ShortUUID().random(length=16)

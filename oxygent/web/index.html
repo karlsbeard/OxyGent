@@ -137,16 +137,16 @@
                 </div>
                 <button class="file-upload-area" id="message_addtional">
                     <input
-                            type="file"
-                            id="fileAddtional"
-                            multiple
-                            accept=".txt,.jpg,.jpeg,.png,.mp4"
-                            style="display: none;"
+                        type="file"
+                        id="fileAddtional"
+                        multiple
+                        accept=".txt,.jpg,.jpeg,.png,.mp4,.xlsx,.xls,.doc,.docx,.pdf,.csv,.tsv,.ods,.py,.md,.json"
+                        style="display: none;"
                     >
                     <img src="./image/group_addtion.svg" alt=""/>
                     <span class="file-tooltip">
                         <span class="file-tooltip-title"> Upload attachments </span>
-                        <span class="file-tooltip-description">Max 10, 10MB each. Images and videos are supported.</span>
+                        <span class="file-tooltip-description">Max 10, 10MB each. Images, videos and table files are supported.</span>
                     </span>
                 </button>
                 <button id="message_send" onclick="send_message()">
@@ -1471,22 +1471,30 @@
     }
 
     // 获取文件类型
+    // 获取文件类型（决定是否允许以及后续展示用）
     function getFileType(filename) {
         var ext = filename.split('.').pop().toLowerCase();
         switch (ext) {
-            case 'txt':
-                return 'text';
+            case 'txt':     return 'text';
             case 'jpg':
-            case 'jpeg':
-                return 'jpg';
-            case 'png':
-                return 'png';
-            case 'mp4':
-                return 'mp4';
-            default:
-                return null;
+            case 'jpeg':    return 'jpg';
+            case 'png':     return 'png';
+            case 'mp4':     return 'mp4';
+            case 'xlsx':
+            case 'xls':     return 'excel';
+            case 'doc':
+            case 'docx':    return 'word';
+            case 'pdf':     return 'pdf';
+            case 'csv':     return 'csv';
+            case 'tsv':     return 'tsv';
+            case 'ods':     return 'ods';
+            case 'py':      return 'python';
+            case 'md':      return 'markdown';
+            case 'json':    return 'json';
+            default:        return 'file';   // 其它未知格式统一按通用文件处理
         }
     }
+
 
     // 格式化文件大小
     function formatFileSize(bytes) {

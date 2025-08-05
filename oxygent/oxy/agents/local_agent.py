@@ -99,6 +99,9 @@ class LocalAgent(BaseAgent):
     is_retain_master_short_memory: bool = Field(
         False, description="Whether to retrieve user history"
     )
+    is_attachment_processing_enabled: bool = Field(
+        True, description="Whether to inject attachments into `query`."
+    )
 
     is_multimodal_supported: bool = Field(
         False, description="Whether support for multimodal input"
@@ -392,14 +395,31 @@ class LocalAgent(BaseAgent):
         oxy_request.arguments["tools_description"] = "\n\n".join(llm_tool_desc_list)
         
         # multimodal support
-        if self.is_multimodal_supported:
-            query_attachments = process_attachments(
-                oxy_request.arguments.get("attachments", [])
-            )
-            if query_attachments:
-                oxy_request.arguments["query"] = query_attachments + [
-                    {"type": "text", "text": oxy_request.arguments["query"]}
-                ]
+        if self.is_attachment_processing_enabled:
+            raw_attachments = oxy_request.arguments.get("attachments", [])
+            structured_attachments = process_attachments(raw_attachments)
+
+            if structured_attachments:
+                original_query_text = oxy_request.arguments["query"]
+
+                if self.is_multimodal_supported:
+                    oxy_request.arguments["query"] = (
+                        structured_attachments
+                        + [{"type": "text", "text": original_query_text}]
+                    )
+                else:
+                    attachment_urls = []
+                    for att in structured_attachments:
+                        for v in att.values():
+                            if isinstance(v, dict) and "url" in v:
+                                attachment_urls.append(v["url"])
+                                break
+                    if attachment_urls:
+                        oxy_request.arguments["query"] = (
+                            f"{original_query_text}\n\n[Attachments]\n"
+                            + "\n".join(attachment_urls)
+                        )
+
         return oxy_request
 
     async def _execute(self, oxy_request: OxyRequest) -> OxyResponse:
