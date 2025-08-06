@@ -142,22 +142,20 @@ oxy_space = [
 
 async def main():
     """
-    Method 1:
-        mas = await MAS.create(oxy_space=oxy_space)
+    new instance:
+        Method 1: async with MAS(oxy_space=oxy_space) as mas:
+        Method 2: mas = await MAS.create(oxy_space=oxy_space)
     call directly:
         await mas.call(callee = 'joke_tool', arguments = {'joke_type': 'comic'})
     call as a cli:
         await mas.start_cli_mode(first_query='Get what time it is and save in `log.txt` under `/local_file`')
         await mas.start_web_service(first_query='Get what time it is and save in `log.txt` under `/local_file`')
         await mas.start_batch_processing(['Hello', 'What time is it now', '200 positions of Pi', 'Get what time it is and save in `log.txt` under `/local_file`'])
-        await mas.start_batch_processing(['Hello'] * 10)
     """
-    # Method 2
     async with MAS(oxy_space=oxy_space) as mas:
         await mas.start_web_service(
             first_query="Please calculate the 20 positions of Pi"
         )
-        # await mas.call(callee="my_tool2", arguments={"query": "123"})
 
 
 if __name__ == "__main__":
