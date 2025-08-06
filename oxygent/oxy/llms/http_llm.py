@@ -6,6 +6,8 @@ providers that follow OpenAI-compatible API standards.
 """
 
 import logging
+import json
+import asyncio
 
 import httpx
 
@@ -100,10 +102,37 @@ class HttpLLM(RemoteLLM):
                     continue
                 payload[k] = v
 
+        if payload.get("stream", False) and (use_openai or not is_gemini):
+            result_parts: list[str] = []
+            async with httpx.AsyncClient(timeout=None) as client:
+                async with client.stream("POST", url, headers=headers,
+                                          json=payload) as resp:
+                    async for line in resp.aiter_lines():
+                        if not line:
+                            continue
+                        if line.startswith("data: "):
+                            line = line[6:]
+                        if line.strip() == "[DONE]":
+                            break
+                        try:
+                            chunk = json.loads(line)
+                        except json.JSONDecodeError:
+                            continue
+                        delta = (
+                            chunk["choices"][0]["delta"].get("content", "")
+                            if use_openai else
+                            chunk.get("message", {}).get("content", "")
+                        )
+                        if delta:
+                            result_parts.append(delta)
+                            await oxy_request.send_message(
+                                json.dumps({"type": "stream", "content": {"delta": delta}})
+                            )
+            result = "".join(result_parts)
+            return OxyResponse(state=OxyState.COMPLETED, output=result)
+
         async with httpx.AsyncClient(timeout=self.timeout) as client:
-            http_response = await client.post(
-                url, headers=headers, json=payload
-            )
+            http_response = await client.post(url, headers=headers, json=payload)
             http_response.raise_for_status()
             data = http_response.json()
             if "error" in data:
