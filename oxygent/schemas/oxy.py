@@ -60,6 +60,10 @@ class OxyRequest(BaseModel):
     """
 
     # Static
+    request_id: str = Field(
+        default_factory=lambda: shortuuid.ShortUUID().random(length=22),
+        description="Client-side id for tracing & resuming requests.",
+    )
     from_trace_id: Optional[str] = Field("", description="")
     current_trace_id: Optional[str] = Field(
         default_factory=lambda: shortuuid.ShortUUID().random(length=16), description=""
@@ -357,19 +361,13 @@ class OxyRequest(BaseModel):
         var_short_memory = "master_short_memory" if master_level else "short_memory"
         return self.arguments.get(var_short_memory, [])
     
-    def get_global(self, key, default=None):
-        if self.mas:
-            return self.mas.get_global(key, default)
-        return default
+    def get_request_id(self) -> str:
+        """Return the current request_id."""
+        return self.request_id
 
-    def set_global(self, key, value):
-        if self.mas:
-            self.mas.set_global(key, value)
-
-    def get_all_global(self) -> dict:
-        if self.mas:
-            return self.mas.global_data
-        return {}
+    def set_request_id(self, rid: str):
+        """Manually override the request_id (rarely needed)."""
+        self.request_id = rid
 
 
 class OxyResponse(BaseModel):

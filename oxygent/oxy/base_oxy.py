@@ -18,7 +18,6 @@ from pydantic import BaseModel, Field
 # from ..mas import MAS
 from ..config import Config
 from ..schemas import OxyRequest, OxyResponse, OxyState
-from ..schemas.oxy import _filter_shared_data_for_storage
 from ..utils.common_utils import filter_json_types, get_format_time, get_md5, to_json
 
 logger = logging.getLogger(__name__)
@@ -227,6 +226,7 @@ class Oxy(BaseModel, ABC):
                         "size": 10,
                     },
                 )
+            logging.info(f"ES search returned {len(es_response['hits']['hits'])} hits")
             if es_response["hits"]["hits"]:
                 current_node_order = es_response["hits"]["hits"][0]["_source"][
                     "update_time"
@@ -304,6 +304,7 @@ class Oxy(BaseModel, ABC):
                     "node_id": oxy_request.node_id,
                     "node_type": callee_cat,
                     "trace_id": oxy_request.current_trace_id,
+                    "request_id": oxy_request.request_id,
                     "caller": oxy_request.caller,
                     "callee": callee_name,
                     "parallel_id": oxy_request.parallel_id,
@@ -312,7 +313,6 @@ class Oxy(BaseModel, ABC):
                     "node_id_stack": oxy_request.node_id_stack,
                     "pre_node_ids": oxy_request.pre_node_ids,
                     "create_time": get_format_time(),
-                    "shared_data": _filter_shared_data_for_storage(oxy_request.shared_data),
                 },
             )
         else:
@@ -391,6 +391,7 @@ class Oxy(BaseModel, ABC):
                     "node_id": oxy_request.node_id,
                     "node_type": callee_cat,
                     "trace_id": oxy_request.current_trace_id,
+                    "request_id": oxy_request.request_id,
                     "caller": oxy_request.caller,
                     "callee": callee_name,
                     "input": to_json(oxy_input),
@@ -428,6 +429,7 @@ class Oxy(BaseModel, ABC):
                         "call_stack": oxy_request.call_stack,
                         "output": oxy_response.output,
                         "current_trace_id": oxy_request.current_trace_id,
+                        "request_id": oxy_request.request_id, 
                     },
                 }
             )
@@ -435,7 +437,9 @@ class Oxy(BaseModel, ABC):
         # Send additional observation-answer message to frontend
         if self.is_send_answer and oxy_request.caller_category == "user":
             await oxy_request.send_message(
-                {"type": "answer", "content": oxy_response.output}
+                {"type": "answer", 
+                 "content": oxy_response.output,
+                 "request_id": oxy_request.request_id,}
             )
 
     async def execute(self, oxy_request: OxyRequest) -> OxyResponse:

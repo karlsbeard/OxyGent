@@ -264,8 +264,10 @@ class MAS(BaseModel):
             {
                 "mappings": {
                     "properties": {
+                        "request_id": {"type": "keyword"},
                         "trace_id": {"type": "keyword"},
                         "from_trace_id": {"type": "keyword"},
+                        # TODO: "group id" : all trace on the same tree have the same group id
                         "root_trace_ids": {"type": "keyword"},
                         "input": {"type": "text"},
                         "callee": {"type": "keyword"},
@@ -301,6 +303,7 @@ class MAS(BaseModel):
             {
                 "mappings": {
                     "properties": {
+                        # TODO: group id
                         "node_id": {"type": "keyword"},
                         "node_type": {"type": "keyword"},
                         "trace_id": {"type": "keyword"},

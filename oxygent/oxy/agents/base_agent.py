@@ -92,6 +92,7 @@ class BaseAgent(BaseFlow):
                     Config.get_app_name() + "_trace",
                     doc_id=oxy_request.current_trace_id,
                     body={
+                        "request_id": oxy_request.request_id,
                         "trace_id": oxy_request.current_trace_id,
                         "from_trace_id": oxy_request.from_trace_id,
                         "root_trace_ids": oxy_request.root_trace_ids,
@@ -124,6 +125,7 @@ class BaseAgent(BaseFlow):
                     Config.get_app_name() + "_trace",
                     doc_id=oxy_request.current_trace_id,
                     body={
+                        "request_id": oxy_request.request_id,
                         "trace_id": oxy_request.current_trace_id,
                         "from_trace_id": oxy_request.from_trace_id,
                         "root_trace_ids": oxy_request.root_trace_ids,
