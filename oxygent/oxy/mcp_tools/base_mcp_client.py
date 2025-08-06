@@ -56,10 +56,14 @@ class BaseMCPClient(BaseTool):
             raise RuntimeError(f"Server {self.name} not initialized")
 
         tools_response = await self._session.list_tools()
+        print(tools_response)
 
         params = self.model_dump(
             exclude={
                 "sse_url",
+                "server_url",
+                "headers",
+                "middlewares",
                 "included_tool_name_list",
                 "name",
                 "desc",

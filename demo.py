@@ -136,6 +136,7 @@ oxy_space = [
         func_workflow=workflow,
         is_retain_master_short_memory=True,
     ),
+    # oxy.StreamableMCPClient(name="test_stream", server_url="http://127.0.0.1:9000/mcp"),
 ]
 
 
@@ -156,6 +157,7 @@ async def main():
         await mas.start_web_service(
             first_query="Please calculate the 20 positions of Pi"
         )
+        # await mas.call(callee="my_tool2", arguments={"query": "123"})
 
 
 if __name__ == "__main__":
