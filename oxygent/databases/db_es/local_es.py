@@ -180,6 +180,7 @@ class LocalEs(BaseEs):
         docs = self._sort_docs(docs, body.get("sort", []))
         return {"hits": {"hits": docs[: body.get("size", 10)]}}
 
+
     # ------------------------------------------------------------------
     # Helpers for naive query execution
     # ------------------------------------------------------------------
@@ -189,7 +190,6 @@ class LocalEs(BaseEs):
         return [{"_id": k, "_source": v} for k, v in data.items()]
 
     def _filter_docs(self, docs: list[dict[str, Any]], query: dict[str, Any]):
-        """Multi-condition Query"""
         if not query:
             return docs
         
@@ -212,7 +212,6 @@ class LocalEs(BaseEs):
                 
                 for condition in must_conditions:
                     filtered_docs = self._filter_docs(filtered_docs, condition)
-                
                 return filtered_docs
             
             if "should" in bool_query:

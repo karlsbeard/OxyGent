@@ -47,7 +47,7 @@ from .oxy.mcp_tools.base_mcp_client import BaseMCPClient
 from .routes import router
 from .schemas import OxyRequest, OxyResponse, WebResponse
 from .schemas.oxy import _filter_shared_data_for_storage
-from .utils.common_utils import msgpack_preprocess, print_tree, to_json
+from .utils.common_utils import msgpack_preprocess, print_tree, to_json, validate_table_file
 
 logger = None
 load_dotenv(Config.get_env_path(), override=Config.get_env_is_override())
@@ -82,8 +82,6 @@ class MAS(BaseModel):
     event_dict: dict = Field(default_factory=dict)
 
     message_prefix: str = Field("oxygent")
-
-    global_data: dict = Field(default_factory=dict, description="system-wide global data")
 
     def __init__(self, **kwargs):
         """Construct a new :class:`MAS`.
@@ -147,19 +145,6 @@ class MAS(BaseModel):
         logger.info(f"Start Time   : {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
         logger.info("=" * 64)
 
-    def init_global_data(self, initial: dict | None = None):
-        """
-        Initialise the in-memory global data store.
-        """
-        if initial:
-            self.global_data.update(initial)
-
-    def get_global(self, key, default=None):
-        return self.global_data.get(key, default)
-
-    def set_global(self, key, value):
-        self.global_data[key] = value
-
     def add_oxy(self, oxy: Oxy):
         """Register a single Oxy object.
 
@@ -199,7 +184,6 @@ class MAS(BaseModel):
         """
         self.show_banner()
         self.show_mas_info()
-        self.init_global_data()
         # Register default oxy_space
         self.add_oxy_list(self.oxy_space)
         if Config.get_vearch_config():
@@ -260,14 +244,15 @@ class MAS(BaseModel):
             self.es_client = db_factory.get_instance(LocalEs)
 
         await self.es_client.create_index(
+
             Config.get_app_name() + "_trace",
             {
                 "mappings": {
                     "properties": {
                         "request_id": {"type": "keyword"},
+                        "group_id": {"type": "keyword"},
                         "trace_id": {"type": "keyword"},
                         "from_trace_id": {"type": "keyword"},
-                        # TODO: "group id" : all trace on the same tree have the same group id
                         "root_trace_ids": {"type": "keyword"},
                         "input": {"type": "text"},
                         "callee": {"type": "keyword"},
@@ -298,14 +283,19 @@ class MAS(BaseModel):
                 },
             )
         sd_schema = Config.get_shared_data_schema()
+        if sd_schema:
+            await self.es_client.create_index(
+                Config.get_app_name() + "_shared_data",
+                {"mappings": {"properties": sd_schema}},
+            )
         await self.es_client.create_index(
             Config.get_app_name() + "_node",
             {
                 "mappings": {
                     "properties": {
-                        # TODO: group id
                         "node_id": {"type": "keyword"},
                         "node_type": {"type": "keyword"},
+                        "group_id": {"type": "keyword"},
                         "trace_id": {"type": "keyword"},
                         "caller": {"type": "keyword"},
                         "callee": {"type": "keyword"},
@@ -327,9 +317,6 @@ class MAS(BaseModel):
                             "format": "yyyy-MM-dd HH:mm:ss.SSSSSSSSS",
                             "type": "date",
                         },
-                        "shared_data": {
-                            "properties": sd_schema,
-                        }
                     }
                 }
             },
@@ -653,6 +640,30 @@ class MAS(BaseModel):
                     logger.warning(f"Restart node {payload['restart_node_id']} not found in ES")
 
             oxy_request = OxyRequest(mas=self)
+            # Set group_id: inherit if from_trace_id is provided, else new
+            if "group_id" in payload:
+                oxy_request.group_id = payload["group_id"]
+            elif "from_trace_id" in payload and payload["from_trace_id"]:
+                from_trace_id = str(payload["from_trace_id"])
+                es_response_group_id = await self.es_client.search(
+                    Config.get_app_name() + "_trace",
+                    {
+                        "query": {
+                            "term": {
+                                "trace_id": from_trace_id
+                            }
+                        },
+                        "size": 1,
+                    },
+                )
+                hits = es_response_group_id.get("hits", {}).get("hits", [])
+                if hits:
+                    oxy_request.group_id = hits[0]["_source"].get("group_id", "")
+                else:
+                    oxy_request.group_id = shortuuid.ShortUUID().random(length=16)
+            else:
+                oxy_request.group_id = shortuuid.ShortUUID().random(length=16)
+
             oxy_request_fields = oxy_request.model_fields
             for k, v in payload.items():
                 if k in oxy_request_fields:
@@ -662,16 +673,6 @@ class MAS(BaseModel):
 
             if not oxy_request.callee:
                 oxy_request.callee = self.master_agent_name
-
-            if oxy_request.callee not in self.oxy_name_to_oxy:
-                await self.send_message(
-                    {"type": "error", "data": "callee is not exists."}, send_msg_key
-                )
-                if send_msg_key:
-                    await self.send_message(
-                        {"event": "close", "data": "done"}, send_msg_key
-                    )
-                return "callee is not exists."
 
             answer = await oxy_request.start()
 
@@ -683,10 +684,9 @@ class MAS(BaseModel):
                         "create_time": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f"),
                     }
                 )
-                await self.es_client.update(
-                    index=Config.get_app_name() + "_node",
-                    id=answer.oxy_request.node_id,
-                    body={"doc": {"shared_data": filtered_sd}},
+                await self.es_client.index(
+                    index=Config.get_app_name() + "_shared_data",
+                    body=filtered_sd,
                 )
 
             if send_msg_key:
@@ -889,7 +889,7 @@ class MAS(BaseModel):
                 payload = await request.json()
 
             if "query" not in payload:
-                payload["query"] = ""
+                return WebResponse(code=400, message="query is required").to_dict()
 
             if "attachments" in payload:
                 attachments_with_path = []

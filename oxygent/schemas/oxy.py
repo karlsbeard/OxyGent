@@ -64,6 +64,10 @@ class OxyRequest(BaseModel):
         default_factory=lambda: shortuuid.ShortUUID().random(length=22),
         description="Client-side id for tracing & resuming requests.",
     )
+    group_id: str = Field(
+        default_factory=lambda: shortuuid.ShortUUID().random(length=16),
+        description="Static group identifier for trace trees."
+    )
     from_trace_id: Optional[str] = Field("", description="")
     current_trace_id: Optional[str] = Field(
         default_factory=lambda: shortuuid.ShortUUID().random(length=16), description=""
@@ -123,6 +127,7 @@ class OxyRequest(BaseModel):
         fields["shared_data"] = self.shared_data
 
         fields["parallel_id"] = ""
+        fields["group_id"] = self.group_id
         fields["latest_node_ids"] = []
         for k in fields:
             if k not in ["mas", "shared_data", "parallel_id", "latest_node_ids"]:
@@ -368,6 +373,14 @@ class OxyRequest(BaseModel):
     def set_request_id(self, rid: str):
         """Manually override the request_id (rarely needed)."""
         self.request_id = rid
+
+    def get_group_id(self) -> str:
+        """Return the group_id associated with this request."""
+        return self.group_id
+
+    def set_group_id(self, gid: str):
+        """Manually override the group_id."""
+        self.group_id = gid
 
 
 class OxyResponse(BaseModel):
