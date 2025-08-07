@@ -173,8 +173,6 @@
 </body>
 <script>
     var ws = null;
-    var streamSpan = null;
-    var streamChatIdx = -1
     var from_trace_id = "";
     var first_chat = "How may I support your request today?";
 
@@ -555,38 +553,6 @@
             }
         }
 
-        if (jm["type"] === "stream") {        
-            if (streamSpan) {
-                const newTxt = (chats[streamChatIdx]?.content || '') + jm.content.delta;        
-                streamSpan.html(marked.parse(newTxt));           // 即时把 Markdown 渲染成 HTML
-                // 同步到 chats，保证后续重绘不丢失
-                if (streamChatIdx > -1) {
-                    // 占位气泡不存在时补一个，避免 TypeError
-                    if (!chats[streamChatIdx]) {
-                        chats[streamChatIdx] = {
-                            role: master_agent_name,
-                            content: ""
-                        };
-                    }
-                    chats[streamChatIdx].content = newTxt;   
-                }     
-                scroll_top_div_chat_history();
-            }else {
-                /* 首次收到 stream 但还没插入气泡的兜底 */
-                streamSpan = send_msg_to_chatbox(
-                    "",
-                    master_agent_name,
-                    "",
-                    true,
-                    /* is_stream = */ true
-                );
-                streamChatIdx = chats.length;
-                chats.push({role: master_agent_name, content: newTxt});
-                streamSpan.html(marked.parse(newTxt));
-            }
-            return;    
-        }
-
         if (jm["type"] == "observation") {
             if (jm["content"]["caller"] === 'user') {
                 // answer
@@ -595,13 +561,8 @@
                 if (typeof markdownInput !== 'string') {
                     markdownInput = JSON.stringify(markdownInput, null, 2);
                 }
-                if (streamChatIdx > -1) {
-                // 用最终答案覆盖占位气泡
-                    chats[streamChatIdx].content = markdownInput;
-                    streamChatIdx = -1;
-                } else {
-                    chats.push({role: jm["content"].callee, content: markdownInput});
-                }
+                var msg = {"role": jm["content"].callee, "content": markdownInput};
+                chats.push(msg);
                 history["answer"] = JSON.parse(JSON.stringify(chats));
                 llm_is_work = false;
                 // $("#message_send").text("Send");
@@ -610,19 +571,13 @@
             } else if (jm["content"]["caller_category"] === 'agent' && jm["content"]["callee_category"] === 'agent') {
                 push_plan(jm["content"]["caller"], "observation", jm["content"].output, jm["content"].node_id, jm["content"]["callee"]);
                 history["agent_log"] = JSON.parse(JSON.stringify(plan_dict[jm["content"]["caller"]]));
+
                 var msg = {
                     "role": jm["content"].callee,
                     "content": jm["content"].output,
                     "at": jm["content"].caller
                 };
-                if (streamChatIdx > -1) {
-                // 用最终答案覆盖占位气泡
-                    chats[streamChatIdx].content = markdownInput;
-                    streamChatIdx = -1;
-                } 
-                else{
-                    chats.push(msg);
-                }
+                chats.push(msg);
                 history["answer"] = JSON.parse(JSON.stringify(chats));
             } else if (jm["content"]["caller_category"] === 'agent' && jm["content"]["callee_category"] === 'llm') {
                 push_plan(jm["content"]["caller"], "plan", jm["content"].output, jm["content"].node_id, jm["content"]["callee"]);
@@ -635,10 +590,6 @@
             if (jm["content"]["callee_category"] === 'agent' || ['tool'].includes(jm["content"]["callee_category"])) {
                 remove_tool_call(jm["content"]["call_stack"].slice(1));
                 history["tool_call"] = getNodeColors(get_all_tool_calls());
-            }
-            if (jm["content"]["caller"] === 'user') {
-                streamSpan = null;
-                streamChatIdx = -1;     // 同时把索引复位
             }
         }
 
@@ -728,7 +679,7 @@
         begin();
     }
 
-    function send_msg_to_chatbox(msg, name = "user", at = "", scroll_top = true, is_stream = false) {
+    function send_msg_to_chatbox(msg, name = "user", at = "", scroll_top = true) {
         var li = $("<li>");
         if (name === "user") {
             li.addClass("me");
@@ -752,16 +703,14 @@
 
             li.append($("<p>").text(name));
         }
-        let span = $('<span class="1">').text(msg);
         if (at === "") {
             if (argentName && name === "user") {
                 var argentNameHtml = `<i style="color: #155EEF;font-style: normal">@${argentName}</i>`
                 li.append($('<span class="1">').html(argentNameHtml + " " + msg));
                 argentName = '';
                 renderCharlist();
-                li.append(span);
             } else {
-                li.append(span);
+                li.append($('<span class="1">').text(msg));
             }
         } else {
             li.append($('<span>').append($("<section>").css("color", agentImgMap[agent_id_dict[at]]?.color).text("@" + at)).append(msg));
@@ -791,7 +740,6 @@
         if (scroll_top) {
             scroll_top_div_chat_history();
         }
-        return is_stream ? span : null;
     }
 
     function scroll_top_div_chat_history() {
@@ -819,6 +767,19 @@
             if (!message) {
                 return
             }
+            let query_val = message;
+            try {
+                const parsed = JSON.parse(message.trim());
+                // 若为对象 / 数组且包含 "part" 字段，则认为是 A2A 格式
+                if (
+                    (Array.isArray(parsed) && parsed[0]?.part) ||
+                    (parsed && parsed.part)
+                ) {
+                    query_val = parsed;   // 结构化 query
+                }
+            } catch (e) {
+                /* 不是合法 JSON ⇒ 维持纯文本 */
+            }
 
             var payload = {
                 "from_trace_id": from_trace_id,
@@ -833,11 +794,6 @@
             if (argentName) {
                 payload.callee = argentName;
             }
-            send_msg_to_chatbox(message);
-            streamSpan = send_msg_to_chatbox("", master_agent_name, "", true, /*is_stream=*/true);
-            streamChatIdx = chats.length;            // chats 里新增同一个空气泡
-            chats.push({role: master_agent_name, content: ""});
-            console.log('streamSpan=', streamSpan);
 
             // ToDo 接口协议修改
             // if (message.includes("图")) {
@@ -854,15 +810,6 @@
                 message_handler(event.data);
                 // queue.push(event.data);
             };
-            eventSource.addEventListener('stream', (e) => {
-                // 后端 data 只有 {"delta":"…"}，这里补上 type 字段
-                const payload = JSON.stringify({
-                    type: 'stream',
-                    content: JSON.parse(e.data)          // => { delta: '…' }
-                });
-                message_handler(payload);
-            });
-
             // setInterval(() => {
             //     if (queue.length > 0) {
             //         message_handler(queue.shift());
@@ -891,6 +838,7 @@
             historys.push(history);
             show_id += 1;
             show_step();
+            send_msg_to_chatbox(message);
             llm_is_work = true;
             $("#message_send").html(`
                     <img src="./image/stop-circle.svg" alt="" />
