@@ -1,7 +1,7 @@
 aioredis==2.0.1
 fastapi==0.115.12
 httpx==0.28.1
-mcp==1.7.1
+mcp==1.12.3
 numpy==1.26.4
 openai==1.77.0
 pandas==2.2.3
