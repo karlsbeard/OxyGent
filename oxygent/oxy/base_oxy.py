@@ -145,7 +145,9 @@ class Oxy(BaseModel, ABC):
                 # Skip system parameters that shouldn't be shown to LLM
                 if param_info.get("description", "No description") == "SystemArg":
                     continue
-                arg_desc = f"- {param_name}: {param_info.get('type', 'string')}, {param_info.get('description', 'No description')}"
+                param_type = param_info.get("type", "string")
+                param_key = "properties" if param_type == "object" else "description"
+                arg_desc = f"- {param_name}: {param_type}, {param_info.get(param_key, 'No description')}"
                 if param_name in self.input_schema.get("required", []):
                     arg_desc += " (required)"
                 args_desc.append(arg_desc)
@@ -218,7 +220,11 @@ class Oxy(BaseModel, ABC):
                         "query": {
                             "bool": {
                                 "must": [
-                                    {"term": {"trace_id": oxy_request.reference_trace_id}},
+                                    {
+                                        "term": {
+                                            "trace_id": oxy_request.reference_trace_id
+                                        }
+                                    },
                                     {"term": {"input_md5": oxy_request.input_md5}},
                                 ]
                             }
@@ -429,7 +435,7 @@ class Oxy(BaseModel, ABC):
                         "call_stack": oxy_request.call_stack,
                         "output": oxy_response.output,
                         "current_trace_id": oxy_request.current_trace_id,
-                        "request_id": oxy_request.request_id, 
+                        "request_id": oxy_request.request_id,
                     },
                 }
             )
@@ -437,9 +443,11 @@ class Oxy(BaseModel, ABC):
         # Send additional observation-answer message to frontend
         if self.is_send_answer and oxy_request.caller_category == "user":
             await oxy_request.send_message(
-                {"type": "answer", 
-                 "content": oxy_response.output,
-                 "request_id": oxy_request.request_id,}
+                {
+                    "type": "answer",
+                    "content": oxy_response.output,
+                    "request_id": oxy_request.request_id,
+                }
             )
 
     async def execute(self, oxy_request: OxyRequest) -> OxyResponse:
