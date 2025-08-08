@@ -73,17 +73,33 @@ class BaseLLM(Oxy):
 
     async def _get_messages(self, oxy_request: OxyRequest):
         """Preprocess messages for multimoding input."""
+        # ---------- if "messages" ----------
+        if "messages" not in oxy_request.arguments:
+            query_val = oxy_request.arguments.get("query", "")
+            # A2A-style parts -> content, otherwise -> str
+            if isinstance(query_val, list):
+                content_field = query_val
+            elif isinstance(query_val, dict):
+                content_field = [query_val]
+            else:
+                content_field = str(query_val)
+            oxy_request.arguments["messages"] = [
+                {"role": "user", "content": content_field}
+            ]
+
+        # hold url
         if not self.is_convert_url_to_base64:
             return oxy_request.arguments["messages"]
 
+        # convert url into base_64 data
         messages_processed = copy.deepcopy(oxy_request.arguments["messages"])
 
         for message in messages_processed:
-            if not isinstance(message["content"], list):
-                continue
+            if not isinstance(message.get("content"), list):
+                continue  
 
             for item in message["content"]:
-                item_type = item["type"]
+                item_type = item.get("type")
                 if item_type == "text":
                     continue
 
@@ -91,12 +107,10 @@ class BaseLLM(Oxy):
                     item[item_type]["url"] = await image_to_base64(
                         item[item_type]["url"], self.max_image_pixels
                     )
-
                 elif item_type == "video_url":
                     item[item_type]["url"] = await video_to_base64(
                         item[item_type]["url"], self.max_video_size
                     )
-
                 elif item_type in {
                     "table_file",
                     "doc_file",

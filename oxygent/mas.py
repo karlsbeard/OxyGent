@@ -47,7 +47,7 @@ from .oxy.mcp_tools.base_mcp_client import BaseMCPClient
 from .routes import router
 from .schemas import OxyRequest, OxyResponse, WebResponse
 from .schemas.oxy import _filter_shared_data_for_storage
-from .utils.common_utils import msgpack_preprocess, print_tree, to_json, validate_table_file
+from .utils.common_utils import msgpack_preprocess, print_tree, to_json, validate_table_file, _compose_query_parts
 
 logger = None
 load_dotenv(Config.get_env_path(), override=Config.get_env_is_override())
@@ -601,6 +601,26 @@ class MAS(BaseModel):
             OxyResponse: Fully populated response object.
         """
         try:
+            # distinct attachments
+            if "attachments" in payload and payload["attachments"]:
+                atts, remotes = [], []
+                for att in payload["attachments"]:
+                    is_remote = att.startswith(("http://", "https://"))
+                    full_path = (
+                        att
+                        if is_remote
+                        else os.path.join(Config.get_cache_save_dir(), "uploads", att)
+                    )
+                    atts.append(full_path)
+                    if is_remote:
+                        remotes.append(full_path)
+                payload["attachments"] = atts
+                if remotes:
+                    urls = payload.get("web_file_url_list", [])
+                    payload["web_file_url_list"] = list(dict.fromkeys(urls + remotes))
+
+                payload["query"] = _compose_query_parts(payload.get("query", ""), atts)
+            
             if "shared_data" not in payload:
                 payload["shared_data"] = dict()
             payload["shared_data"]["query"] = payload["query"]
@@ -906,10 +926,16 @@ class MAS(BaseModel):
                     if is_remote:
                         remote_urls.append(file_path)
 
+                # distinct attachments
                 payload["attachments"] = attachments_with_path
                 if remote_urls:
                     existing_urls = payload.get("web_file_url_list", [])
                     payload["web_file_url_list"] = list(dict.fromkeys(existing_urls + remote_urls))
+
+                # a2a style query
+                payload["query"] = _compose_query_parts(
+                    payload.get("query", ""), attachments_with_path
+                )
 
             if "current_trace_id" not in payload:
                 payload["current_trace_id"] = shortuuid.ShortUUID().random(length=16)

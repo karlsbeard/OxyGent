@@ -395,7 +395,38 @@ class LocalAgent(BaseAgent):
         oxy_request.arguments["tools_description"] = "\n\n".join(llm_tool_desc_list)
         
         # multimodal support
-        if self.is_attachment_processing_enabled:
+        query_parts = oxy_request.get_query_parts()  # slice a2a style query
+        multimodal_content = []      # LLM content list
+        plain_text_lines = []        # placeholder if the llm not support multimodal
+
+        for p in query_parts:
+            part = p.get("part", {})
+            ctype = part.get("content_type", "text/plain")
+            data = str(part.get("data", ""))
+
+            if ctype.startswith("text"):
+                multimodal_content.append({"type": "text", "text": data})
+                plain_text_lines.append(data)
+
+            elif ctype in ("url", "path"):
+                # parser url 
+                multimodal_content.extend(process_attachments([data]))
+                plain_text_lines.append(data)
+
+            else:  # fallback
+                multimodal_content.append({"type": "text", "text": data})
+                plain_text_lines.append(data)
+
+        # ---------- write back query ----------
+        if self.is_multimodal_supported:
+            oxy_request.arguments["query"] = multimodal_content
+        else:
+            oxy_request.arguments["query"] = "\n".join(plain_text_lines)
+
+        # ---------- old attachments ----------
+        if self.is_attachment_processing_enabled and not isinstance(
+            oxy_request.arguments.get("query"), list
+        ):  # skip a2a attachments
             raw_attachments = oxy_request.arguments.get("attachments", [])
             structured_attachments = process_attachments(raw_attachments)
 

@@ -304,6 +304,23 @@ class ReActAgent(LocalAgent):
         Returns:
             OxyResponse: Final response with answer and ReAct memory trace.
         """
+        def _plain_text(q):
+            """ list/dict query -> str"""
+            if isinstance(q, list):
+                buf = []
+                for it in q:
+                    if "type" in it:                   # OpenAI content format
+                        if it["type"] == "text":
+                            buf.append(it["text"])
+                        else:
+                            # image_url / video_url / file_url : empty for hold order
+                            buf.append(f"[{it['type']}]")
+                    elif "part" in it:                 # A2A parts
+                        buf.append(str(it["part"].get("data", "")))
+                    else:
+                        buf.append(str(it))
+                return " ".join(buf)
+            return str(q)
         react_memory = Memory()        
         for current_round in range(self.max_react_rounds + 1):
             # Build complete message context: instruction + short memory + query + react memory
@@ -314,8 +331,13 @@ class ReActAgent(LocalAgent):
             temp_memory.add_messages(
                 Message.dict_list_to_messages(oxy_request.get_short_memory())
             )
+            raw_query = oxy_request.arguments.get("query", "")
+            if self.is_multimodal_supported and isinstance(raw_query, list):
+                user_query_content = raw_query
+            else:
+                user_query_content = _plain_text(raw_query)
             # Add current query and ReAct history
-            temp_memory.add_message(Message.user_message(oxy_request.get_query()))
+            temp_memory.add_message(Message.user_message(user_query_content))
             temp_memory.add_messages(react_memory.messages)
 
             oxy_response = await oxy_request.call(
@@ -414,7 +436,10 @@ class ReActAgent(LocalAgent):
         tool_call_results = "\n\n".join(tool_call_results)
 
         # Generate final answer based on accumulated results
-        user_input_with_results = f"User question: {oxy_request.get_query()}\n---\nTool execution results: {tool_call_results}"
+        user_input_text = _plain_text(raw_query) # query -> str
+        user_input_with_results = (
+            f"User question: {user_input_text}\n---\nTool execution results: {tool_call_results}"
+        )
         temp_messages = [
             Message.system_message(
                 "Please answer the user's question based on the given tool execution results."

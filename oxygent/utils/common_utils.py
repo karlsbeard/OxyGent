@@ -311,9 +311,30 @@ def process_attachments(attachments):
                                       "code_file": {"url": attachment,
                                                     "format": ext.lstrip('.')}})
         else:
-            # 兜底：未知但允许的文件
+            # fallback
             query_attachments.append({"type": "file",
                                       "file": {"url": attachment,
                                                "format": ext.lstrip('.')}})
 
     return query_attachments
+
+def _compose_query_parts(original_query, attachments):
+    """
+     <string | list | dict> + attachments:list[str] -> A2A-style parts
+    """
+    parts = []
+
+    # add attachments
+    for p in attachments:
+        ctype = "url" if p.startswith(("http://", "https://")) else "path"
+        parts.append({"part": {"content_type": ctype, "data": p}})
+
+    # sort query
+    if isinstance(original_query, list):
+        parts.extend(original_query)
+    elif isinstance(original_query, dict):
+        parts.append(original_query)
+    else:  # fallback : query = ""
+        parts.append({"part": {"content_type": "text/plain", "data": str(original_query)}})
+
+    return parts

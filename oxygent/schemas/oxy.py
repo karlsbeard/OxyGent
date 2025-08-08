@@ -353,6 +353,35 @@ class OxyRequest(BaseModel):
             return self.shared_data.get("query", "")
         else:
             return self.arguments.get("query", "")
+        
+    def get_query_parts(self, master_level: bool = False) -> list:
+        """
+        Return the query as an **ordered parts list**.
+
+        - query: list[dict] -> hold  
+        - query: dict -> list[dict] 
+        - query: str ->
+          {"part":{"content_type":"text/plain","data":<text>}}
+        """
+        q = self.get_query(master_level)
+        if isinstance(q, list):
+            return q
+        if isinstance(q, dict):
+            return [q]
+        return [
+            {
+                "part": {
+                    "content_type": "text/plain",
+                    "data": q if q is not None else "",
+                }
+            }
+        ]
+
+    def set_query_parts(self, parts: list, master_level: bool = False):
+        """
+        Convenience wrapper:  A2A-style parts -> query。
+        """
+        self.set_query(parts, master_level)
 
     def has_short_memory(self, master_level=False):
         var_short_memory = "master_short_memory" if master_level else "short_memory"

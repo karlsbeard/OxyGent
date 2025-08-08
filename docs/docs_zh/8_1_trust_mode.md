@@ -22,8 +22,10 @@ trust mode output: Tool [get_current_time] execution result: {
   "timezone": "Asia/Shanghai",
   "datetime": "2025-07-24T20:26:19+08:00",
   "is_dst": false
-}
+} 
 ```
+
+如果开启了`trust_mode`，对于框架可以捕获的异常，或进行错误重试，否则`ReActAgent`会将错误上报。
 
 ## 完整的可运行样例
 

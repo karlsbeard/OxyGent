@@ -107,6 +107,6 @@ if __name__ == "__main__":
 ```
 
 
-[上一章：使用多模态智能体](./10_multimodal.md)
+[上一章：导入附件](./10_1_attachments.md)
 [下一章：生成训练样本](./13_training.md)
 [回到首页](./readme.md)
