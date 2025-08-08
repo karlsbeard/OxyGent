@@ -39,7 +39,6 @@ class Config:
             "name": "app",
             "version": "1.0.0",
         },
-        "env": {"path": ".env", "is_override": False},
         "log": {
             "path": "./cache_dir/app.log",
             "level_root": "INFO",
@@ -53,12 +52,12 @@ class Config:
             "is_detailed_tool_call": True,
             "is_detailed_observation": True,
         },
-        "llm": {    
+        "llm": {
             "cls": "oxygent.llms.OllamaLLM",
             "base_url": "http://localhost:11434",
-            "temperature": 0.1, 
-            "max_tokens": 4096, 
-            "top_p": 1
+            "temperature": 0.1,
+            "max_tokens": 4096,
+            "top_p": 1,
         },
         "cache": {"save_dir": "./cache_dir"},
         "message": {
@@ -70,8 +69,8 @@ class Config:
         },
         "vearch": {},
         "es": {},
+        "es_schema": {"shared_data": {}},
         "redis": {},
-        "schema": {},
         "server": {
             "host": "127.0.0.1",
             "port": 8080,
@@ -99,8 +98,6 @@ class Config:
         if "default" in all_cfg:
             cfg = replace_env_var(all_cfg["default"])
             deep_update(cls._config, cfg)
-        if "schema" in all_cfg.get(env, {}):
-            cls.set_schema_config(all_cfg[env]["schema"])
         # Merge assigned env
         if env in all_cfg:
             cfg = replace_env_var(all_cfg[env])
@@ -147,32 +144,6 @@ class Config:
     @classmethod
     def get_app_version(cls):
         return cls.get_module_config("app", "version")
-
-    """ env """
-
-    @classmethod
-    def set_env_config(cls, env_config):
-        return cls.set_module_config("env", env_config)
-
-    @classmethod
-    def get_env_config(cls):
-        return cls.get_module_config("env")
-
-    @classmethod
-    def set_env_path(cls, path=".env"):
-        cls.set_module_config("env", "path", path)
-
-    @classmethod
-    def get_env_path(cls):
-        return cls.get_module_config("env", "path")
-
-    @classmethod
-    def set_env_is_override(cls, is_override=True):
-        cls.set_module_config("env", "is_override", is_override)
-
-    @classmethod
-    def get_env_is_override(cls):
-        return cls.get_module_config("env", "is_override")
 
     """ log """
 
@@ -375,6 +346,24 @@ class Config:
     def get_es_config(cls):
         return cls.get_module_config("es")
 
+    """ es_schema """
+
+    @classmethod
+    def set_es_schema_config(cls, es_schema_config):
+        cls.set_module_config("es_schema", es_schema_config)
+
+    @classmethod
+    def get_es_schema_config(cls) -> dict:
+        return cls.get_module_config("es_schema")
+
+    @classmethod
+    def set_es_schema_shared_data(cls, es_schema_config):
+        return cls.set_module_config("es_schema", "shared_data", es_schema_config)
+
+    @classmethod
+    def get_es_schema_shared_data(cls) -> dict:
+        return cls.get_module_config("es_schema", "shared_data")
+
     """ vearch """
 
     @classmethod
@@ -482,17 +471,3 @@ class Config:
     @classmethod
     def get_agent_input_schema(cls):
         return cls.get_module_config("agent", "input_schema")
-    
-    """ schema """
-
-    @classmethod
-    def set_schema_config(cls, schema_config: dict):
-        cls.set_module_config("schema", schema_config or {})
-
-    @classmethod
-    def get_schema_config(cls) -> dict:
-        return cls.get_module_config("schema")
-
-    @classmethod
-    def get_shared_data_schema(cls) -> dict:
-        return cls.get_schema_config().get("shared_data", {})

@@ -94,6 +94,7 @@ class BaseAgent(BaseFlow):
                     body={
                         "request_id": oxy_request.request_id,
                         "trace_id": oxy_request.current_trace_id,
+                        "group_id": oxy_request.group_id,
                         "from_trace_id": oxy_request.from_trace_id,
                         "root_trace_ids": oxy_request.root_trace_ids,
                         "input": oxy_request.arguments,
@@ -127,6 +128,7 @@ class BaseAgent(BaseFlow):
                     body={
                         "request_id": oxy_request.request_id,
                         "trace_id": oxy_request.current_trace_id,
+                        "group_id": oxy_request.group_id,
                         "from_trace_id": oxy_request.from_trace_id,
                         "root_trace_ids": oxy_request.root_trace_ids,
                         "input": to_json(oxy_request.arguments),

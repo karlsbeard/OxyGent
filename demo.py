@@ -15,7 +15,7 @@ async def workflow(oxy_request: OxyRequest):
     master_short_memory = oxy_request.get_short_memory(master_level=True)
     print("--- History record-User layer --- :", master_short_memory)
     print("user query:", oxy_request.get_query(master_level=True))
-    await oxy_request.send_message("msg")
+    await oxy_request.send_message({"type": "msg_type", "content": "msg_content"})
     oxy_response = await oxy_request.call(
         callee="time_agent",
         arguments={"query": "What time is it now in Asia/Shanghai?"},

@@ -303,23 +303,32 @@ class Oxy(BaseModel, ABC):
         if self.mas and self.mas.es_client:
             callee_name = oxy_request.callee
             callee_cat = oxy_request.callee_category
+            save_body = {
+                "node_id": oxy_request.node_id,
+                "node_type": callee_cat,
+                "trace_id": oxy_request.current_trace_id,
+                "group_id": oxy_request.group_id,
+                "request_id": oxy_request.request_id,
+                "caller": oxy_request.caller,
+                "callee": callee_name,
+                "parallel_id": oxy_request.parallel_id,
+                "father_node_id": oxy_request.father_node_id,
+                "call_stack": oxy_request.call_stack,
+                "node_id_stack": oxy_request.node_id_stack,
+                "pre_node_ids": oxy_request.pre_node_ids,
+                "create_time": get_format_time(),
+            }
+            shared_data_schema = Config.get_es_schema_shared_data()
+            if shared_data_schema:
+                save_body["shared_data"] = {
+                    k: v
+                    for k, v in oxy_request.shared_data.items()
+                    if k in shared_data_schema
+                }
             await self.mas.es_client.index(
                 Config.get_app_name() + "_node",
                 doc_id=oxy_request.node_id,
-                body={
-                    "node_id": oxy_request.node_id,
-                    "node_type": callee_cat,
-                    "trace_id": oxy_request.current_trace_id,
-                    "request_id": oxy_request.request_id,
-                    "caller": oxy_request.caller,
-                    "callee": callee_name,
-                    "parallel_id": oxy_request.parallel_id,
-                    "father_node_id": oxy_request.father_node_id,
-                    "call_stack": oxy_request.call_stack,
-                    "node_id_stack": oxy_request.node_id_stack,
-                    "pre_node_ids": oxy_request.pre_node_ids,
-                    "create_time": get_format_time(),
-                },
+                body=save_body,
             )
         else:
             logger.warning(f"Node {oxy_request.callee} data unsaved.")
@@ -343,6 +352,7 @@ class Oxy(BaseModel, ABC):
                         "callee_category": oxy_request.callee_category,
                         "call_stack": oxy_request.call_stack,
                         "arguments": filter_json_types(oxy_request.arguments),
+                        "request_id": oxy_request.request_id,
                     },
                 }
             )
@@ -397,6 +407,7 @@ class Oxy(BaseModel, ABC):
                     "node_id": oxy_request.node_id,
                     "node_type": callee_cat,
                     "trace_id": oxy_request.current_trace_id,
+                    "group_id": oxy_request.group_id,
                     "request_id": oxy_request.request_id,
                     "caller": oxy_request.caller,
                     "callee": callee_name,

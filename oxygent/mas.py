@@ -27,7 +27,6 @@ from typing import Optional
 
 import msgpack
 import shortuuid
-from dotenv import load_dotenv
 from elasticsearch import AsyncElasticsearch
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -46,11 +45,14 @@ from .oxy.llms.base_llm import BaseLLM
 from .oxy.mcp_tools.base_mcp_client import BaseMCPClient
 from .routes import router
 from .schemas import OxyRequest, OxyResponse, WebResponse
-from .schemas.oxy import _filter_shared_data_for_storage
-from .utils.common_utils import msgpack_preprocess, print_tree, to_json, validate_table_file, _compose_query_parts
+from .utils.common_utils import (
+    _compose_query_parts,
+    msgpack_preprocess,
+    print_tree,
+    to_json,
+)
 
 logger = None
-load_dotenv(Config.get_env_path(), override=Config.get_env_is_override())
 
 
 class MAS(BaseModel):
@@ -243,8 +245,8 @@ class MAS(BaseModel):
         else:
             self.es_client = db_factory.get_instance(LocalEs)
 
+        # trace table
         await self.es_client.create_index(
-
             Config.get_app_name() + "_trace",
             {
                 "mappings": {
@@ -265,6 +267,7 @@ class MAS(BaseModel):
                 }
             },
         )
+        # message table
         if Config.get_message_is_stored():
             await self.es_client.create_index(
                 Config.get_app_name() + "_message",
@@ -282,45 +285,41 @@ class MAS(BaseModel):
                     }
                 },
             )
-        sd_schema = Config.get_shared_data_schema()
-        if sd_schema:
-            await self.es_client.create_index(
-                Config.get_app_name() + "_shared_data",
-                {"mappings": {"properties": sd_schema}},
-            )
+        # node table
+        node_schema = {
+            "node_id": {"type": "keyword"},
+            "node_type": {"type": "keyword"},
+            "group_id": {"type": "keyword"},
+            "trace_id": {"type": "keyword"},
+            "caller": {"type": "keyword"},
+            "callee": {"type": "keyword"},
+            "parallel_id": {"type": "keyword"},
+            "father_node_id": {"type": "keyword"},
+            "input": {"type": "text"},
+            "input_md5": {"type": "keyword"},
+            "output": {"type": "text"},
+            "state": {"type": "keyword"},
+            "extra": {"type": "text"},
+            "call_stack": {"type": "text"},
+            "node_id_stack": {"type": "text"},
+            "pre_node_ids": {"type": "text"},
+            "create_time": {
+                "format": "yyyy-MM-dd HH:mm:ss.SSSSSSSSS",
+                "type": "date",
+            },
+            "update_time": {
+                "format": "yyyy-MM-dd HH:mm:ss.SSSSSSSSS",
+                "type": "date",
+            },
+        }
+        shared_data_schema = Config.get_es_schema_shared_data()
+        if shared_data_schema:
+            node_schema["shared_data"] = shared_data_schema
         await self.es_client.create_index(
             Config.get_app_name() + "_node",
-            {
-                "mappings": {
-                    "properties": {
-                        "node_id": {"type": "keyword"},
-                        "node_type": {"type": "keyword"},
-                        "group_id": {"type": "keyword"},
-                        "trace_id": {"type": "keyword"},
-                        "caller": {"type": "keyword"},
-                        "callee": {"type": "keyword"},
-                        "parallel_id": {"type": "keyword"},
-                        "father_node_id": {"type": "keyword"},
-                        "input": {"type": "text"},
-                        "input_md5": {"type": "keyword"},
-                        "output": {"type": "text"},
-                        "state": {"type": "keyword"},
-                        "extra": {"type": "text"},
-                        "call_stack": {"type": "text"},
-                        "node_id_stack": {"type": "text"},
-                        "pre_node_ids": {"type": "text"},
-                        "create_time": {
-                            "format": "yyyy-MM-dd HH:mm:ss.SSSSSSSSS",
-                            "type": "date",
-                        },
-                        "update_time": {
-                            "format": "yyyy-MM-dd HH:mm:ss.SSSSSSSSS",
-                            "type": "date",
-                        },
-                    }
-                }
-            },
+            {"mappings": {"properties": node_schema}},
         )
+        # history table
         await self.es_client.create_index(
             Config.get_app_name() + "_history",
             {
@@ -339,7 +338,7 @@ class MAS(BaseModel):
             },
         )
 
-        # redis
+        # init redis client
         redis_config = Config.get_redis_config()
         if redis_config:
             host = redis_config["host"]
@@ -556,7 +555,6 @@ class MAS(BaseModel):
             message: Any serialisable Python object.
             redis_key: Target Redis key (usually ``mas_msg:{app}:{trace_id}``).
         """
-        import datetime
 
         bytes_msg = msgpack.packb(msgpack_preprocess(message))
         if Config.get_message_is_stored():
@@ -620,7 +618,7 @@ class MAS(BaseModel):
                     payload["web_file_url_list"] = list(dict.fromkeys(urls + remotes))
 
                 payload["query"] = _compose_query_parts(payload.get("query", ""), atts)
-            
+
             if "shared_data" not in payload:
                 payload["shared_data"] = dict()
             payload["shared_data"]["query"] = payload["query"]
@@ -628,25 +626,29 @@ class MAS(BaseModel):
             # payload = payload or {}
             # payload.setdefault("shared_data",{})["query"] = payload.get("query","")
 
-            if (
-                "restart_node_id" in payload
-                and payload.get("restart_node_id")
-            ):
+            if "restart_node_id" in payload and payload.get("restart_node_id"):
                 es_response = await self.es_client.search(
                     Config.get_app_name() + "_node",
                     {
                         "query": {"term": {"node_id": payload["restart_node_id"]}},
-                        "size": 1
+                        "size": 1,
                     },
                 )
-                
+
                 if es_response["hits"]["hits"]:
                     restart_node_data = es_response["hits"]["hits"][0]["_source"]
-                    
+
                     if payload.get("reference_trace_id"):
-                        if restart_node_data["trace_id"] == payload["reference_trace_id"]:
-                            payload["restart_node_order"] = restart_node_data["update_time"]
-                            logger.info(f"Found restart node {payload['restart_node_id']} with matching trace_id")
+                        if (
+                            restart_node_data["trace_id"]
+                            == payload["reference_trace_id"]
+                        ):
+                            payload["restart_node_order"] = restart_node_data[
+                                "update_time"
+                            ]
+                            logger.info(
+                                f"Found restart node {payload['restart_node_id']} with matching trace_id"
+                            )
                         else:
                             logger.warning(
                                 f"Node {payload['restart_node_id']} found but trace_id mismatch: "
@@ -654,35 +656,30 @@ class MAS(BaseModel):
                             )
                     else:
                         payload["restart_node_order"] = restart_node_data["update_time"]
-                        payload["reference_trace_id"] = restart_node_data["trace_id"]  # 自动设置
-                        logger.info(f"Found restart node {payload['restart_node_id']}, auto-set trace_id to {restart_node_data['trace_id']}")
+                        payload["reference_trace_id"] = restart_node_data[
+                            "trace_id"
+                        ]  # 自动设置
+                        logger.info(
+                            f"Found restart node {payload['restart_node_id']}, auto-set trace_id to {restart_node_data['trace_id']}"
+                        )
                 else:
-                    logger.warning(f"Restart node {payload['restart_node_id']} not found in ES")
+                    logger.warning(
+                        f"Restart node {payload['restart_node_id']} not found in ES"
+                    )
 
             oxy_request = OxyRequest(mas=self)
             # Set group_id: inherit if from_trace_id is provided, else new
-            if "group_id" in payload:
-                oxy_request.group_id = payload["group_id"]
-            elif "from_trace_id" in payload and payload["from_trace_id"]:
-                from_trace_id = str(payload["from_trace_id"])
+            if "from_trace_id" in payload and payload["from_trace_id"]:
                 es_response_group_id = await self.es_client.search(
                     Config.get_app_name() + "_trace",
                     {
-                        "query": {
-                            "term": {
-                                "trace_id": from_trace_id
-                            }
-                        },
+                        "query": {"term": {"_id": payload["from_trace_id"]}},
                         "size": 1,
                     },
                 )
                 hits = es_response_group_id.get("hits", {}).get("hits", [])
                 if hits:
                     oxy_request.group_id = hits[0]["_source"].get("group_id", "")
-                else:
-                    oxy_request.group_id = shortuuid.ShortUUID().random(length=16)
-            else:
-                oxy_request.group_id = shortuuid.ShortUUID().random(length=16)
 
             oxy_request_fields = oxy_request.model_fields
             for k, v in payload.items():
@@ -695,19 +692,6 @@ class MAS(BaseModel):
                 oxy_request.callee = self.master_agent_name
 
             answer = await oxy_request.start()
-
-            filtered_sd = _filter_shared_data_for_storage(payload.get("shared_data", {}))
-            if filtered_sd:
-                filtered_sd.update(
-                    {
-                        "trace_id": answer.oxy_request.current_trace_id,
-                        "create_time": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f"),
-                    }
-                )
-                await self.es_client.index(
-                    index=Config.get_app_name() + "_shared_data",
-                    body=filtered_sd,
-                )
 
             if send_msg_key:
                 await self.send_message(
@@ -913,14 +897,16 @@ class MAS(BaseModel):
 
             if "attachments" in payload:
                 attachments_with_path = []
-                remote_urls = []  
+                remote_urls = []
 
                 for attachment in payload["attachments"]:
                     is_remote = attachment.startswith(("http://", "https://"))
                     file_path = (
                         attachment
                         if is_remote
-                        else os.path.join(Config.get_cache_save_dir(), "uploads", attachment)
+                        else os.path.join(
+                            Config.get_cache_save_dir(), "uploads", attachment
+                        )
                     )
                     attachments_with_path.append(file_path)
                     if is_remote:
@@ -930,7 +916,9 @@ class MAS(BaseModel):
                 payload["attachments"] = attachments_with_path
                 if remote_urls:
                     existing_urls = payload.get("web_file_url_list", [])
-                    payload["web_file_url_list"] = list(dict.fromkeys(existing_urls + remote_urls))
+                    payload["web_file_url_list"] = list(
+                        dict.fromkeys(existing_urls + remote_urls)
+                    )
 
                 # a2a style query
                 payload["query"] = _compose_query_parts(

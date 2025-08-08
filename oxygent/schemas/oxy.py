@@ -33,12 +33,6 @@ class OxyState(Enum):  # The status of the node (oxy)
     SKIPPED = auto()
     CANCELED = auto()
 
-def _filter_shared_data_for_storage(shared_data: dict) -> dict:
-    schema = Config.get_shared_data_schema()
-    if not schema:
-        return {}
-    return {k: v for k, v in shared_data.items() if k in schema}
-
 
 class OxyRequest(BaseModel):
     """Envelope for a single MAS task invocation.
@@ -66,7 +60,7 @@ class OxyRequest(BaseModel):
     )
     group_id: str = Field(
         default_factory=lambda: shortuuid.ShortUUID().random(length=16),
-        description="Static group identifier for trace trees."
+        description="Static group identifier for trace trees.",
     )
     from_trace_id: Optional[str] = Field("", description="")
     current_trace_id: Optional[str] = Field(
@@ -127,7 +121,6 @@ class OxyRequest(BaseModel):
         fields["shared_data"] = self.shared_data
 
         fields["parallel_id"] = ""
-        fields["group_id"] = self.group_id
         fields["latest_node_ids"] = []
         for k in fields:
             if k not in ["mas", "shared_data", "parallel_id", "latest_node_ids"]:
@@ -353,13 +346,13 @@ class OxyRequest(BaseModel):
             return self.shared_data.get("query", "")
         else:
             return self.arguments.get("query", "")
-        
+
     def get_query_parts(self, master_level: bool = False) -> list:
         """
         Return the query as an **ordered parts list**.
 
-        - query: list[dict] -> hold  
-        - query: dict -> list[dict] 
+        - query: list[dict] -> hold
+        - query: dict -> list[dict]
         - query: str ->
           {"part":{"content_type":"text/plain","data":<text>}}
         """
@@ -394,22 +387,22 @@ class OxyRequest(BaseModel):
     def get_short_memory(self, master_level=False):
         var_short_memory = "master_short_memory" if master_level else "short_memory"
         return self.arguments.get(var_short_memory, [])
-    
+
     def get_request_id(self) -> str:
         """Return the current request_id."""
         return self.request_id
 
-    def set_request_id(self, rid: str):
+    def set_request_id(self, request_id: str):
         """Manually override the request_id (rarely needed)."""
-        self.request_id = rid
+        self.request_id = request_id
 
     def get_group_id(self) -> str:
         """Return the group_id associated with this request."""
         return self.group_id
 
-    def set_group_id(self, gid: str):
+    def set_group_id(self, request_id: str):
         """Manually override the group_id."""
-        self.group_id = gid
+        self.group_id = request_id
 
 
 class OxyResponse(BaseModel):

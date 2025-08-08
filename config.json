@@ -4,7 +4,6 @@
             "name": "app",
             "version": "1.0.0"
         },
-        "env": {"path": ".env", "is_override": false},
         "log": {
             "path": "./cache_dir/app.log",
             "level_root": "INFO",
