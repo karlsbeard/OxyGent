@@ -555,7 +555,8 @@ class MAS(BaseModel):
             message: Any serialisable Python object.
             redis_key: Target Redis key (usually ``mas_msg:{app}:{trace_id}``).
         """
-
+        if Config.get_message_is_show_in_terminal():
+            logger.info(message)
         bytes_msg = msgpack.packb(msgpack_preprocess(message))
         if Config.get_message_is_stored():
             parts = redis_key.split(":")
@@ -574,7 +575,7 @@ class MAS(BaseModel):
             await self.es_client.index(
                 index=Config.get_app_name() + "_message", body=message_doc
             )
-        await self.redis_client.lpush(redis_key, bytes_msg, max_size=10)
+        await self.redis_client.lpush(redis_key, bytes_msg, max_size=1024)
 
     async def chat_with_agent(
         self,

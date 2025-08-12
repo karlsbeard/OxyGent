@@ -70,7 +70,7 @@ class JimdbApRedis:
         self.password = password
         self.redis_pool = None
         self.default_expire_time = 86400  # Default expiration: 24 hours 60 * 60 * 24
-        self.default_list_max_size = 5
+        self.default_list_max_size = 1024
 
         # Initialize Redis connection pool
         try:
@@ -204,7 +204,7 @@ class JimdbApRedis:
         key: str,
         *values: Union[bytes, int, str, float],
         ex: int = 86400,
-        max_size: int = 10,
+        max_size: int = 1024,
         max_length: int = 81920,
     ):
         """Push values to the left (head) of a list with size and length limits.

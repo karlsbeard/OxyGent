@@ -66,6 +66,7 @@ class Config:
             "is_send_think": False,
             "is_send_answer": True,
             "is_stored": False,
+            "is_show_in_terminal": False,
         },
         "vearch": {},
         "es": {},
@@ -335,6 +336,14 @@ class Config:
     @classmethod
     def get_message_is_stored(cls):
         return cls.get_module_config("message", "is_stored")
+
+    @classmethod
+    def set_message_is_show_in_terminal(cls, is_show_in_terminal=True):
+        cls.set_module_config("message", "is_show_in_terminal", is_show_in_terminal)
+
+    @classmethod
+    def get_message_is_show_in_terminal(cls):
+        return cls.get_module_config("message", "is_show_in_terminal")
 
     """ es """
 

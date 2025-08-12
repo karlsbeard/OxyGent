@@ -30,15 +30,13 @@
             "is_send_observation": true,
             "is_send_think": false,
             "is_send_answer": true,
-            "is_stored": false
+            "is_stored": false,
+            "is_show_in_terminal": false
         },
         "vearch": {},
         "es": {},
-        "schema": {
-            "shared_data": {
-                "conversation_step": { "type": "keyword" },
-                "user_id": { "type": "keyword" }
-            }
+        "es_schema": {
+            "shared_data": {}
         },
         "redis": {},
         "server": {
