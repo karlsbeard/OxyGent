@@ -1,5 +1,5 @@
 from oxygent.oxy import FunctionHub
-from pydantic import Field
+from pydantic import Field, fields
 
 time_tools = FunctionHub(name="time_tools")
 
@@ -13,7 +13,7 @@ def get_current_time(
     from pytz import timezone as pytimezone
     from datetime import datetime
 
-    if timezone is None:
+    if isinstance(timezone, fields.FieldInfo):
         timezone = "Asia/Shanghai"
 
     tz = pytimezone(timezone)
