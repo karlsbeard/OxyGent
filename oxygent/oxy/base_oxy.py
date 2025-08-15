@@ -103,6 +103,10 @@ class Oxy(BaseModel, ABC):
         None, exclude=True, description="Execution function"
     )
 
+    func_interceptor: Optional[Callable] = Field(
+        None, exclude=True, description="Interceptor function"
+    )
+
     mas: Optional[Any] = Field(None, exclude=True, description="MAS instance reference")
 
     friendly_error_text: Optional[str] = Field(
@@ -527,6 +531,14 @@ class Oxy(BaseModel, ABC):
             attempt = 0
             while attempt < self.retries:
                 try:
+                    if self.func_interceptor:
+                        error_message = await self.func_interceptor(oxy_request)
+                        if error_message:
+                            oxy_response = OxyResponse(
+                                state=OxyState.SKIPPED,
+                                output=error_message,
+                            )
+                            break
                     if self.func_execute:
                         oxy_response = await self.func_execute(oxy_request)
                     else:

@@ -96,7 +96,12 @@ class OxyRequest(BaseModel):
 
     is_save_history: bool = Field(True, description="whether history is saved")
 
-    shared_data: dict = Field(default_factory=dict)
+    shared_data: dict = Field(
+        default_factory=dict, description="public data in the scope of a single request"
+    )
+    group_data: dict = Field(
+        default_factory=dict, description="public data in the scope of a session group"
+    )
     parallel_id: Optional[str] = Field("", description="")
     parallel_dict: Optional[dict] = Field(default_factory=dict, description="")
 

@@ -23,7 +23,7 @@ import json
 import os
 import traceback
 from collections import OrderedDict
-from typing import Optional
+from typing import Callable, Optional
 
 import msgpack
 import shortuuid
@@ -84,6 +84,10 @@ class MAS(BaseModel):
     event_dict: dict = Field(default_factory=dict)
 
     message_prefix: str = Field("oxygent")
+
+    func_filter: Optional[Callable] = Field(
+        lambda x: x, exclude=True, description="filter function"
+    )
 
     def __init__(self, **kwargs):
         """Construct a new :class:`MAS`.
@@ -600,6 +604,7 @@ class MAS(BaseModel):
             OxyResponse: Fully populated response object.
         """
         try:
+            payload = self.func_filter(payload)
             # distinct attachments
             if "attachments" in payload and payload["attachments"]:
                 atts, remotes = [], []
@@ -692,13 +697,13 @@ class MAS(BaseModel):
             if not oxy_request.callee:
                 oxy_request.callee = self.master_agent_name
 
-            answer = await oxy_request.start()
+            oxy_response = await oxy_request.start()
 
             if send_msg_key:
                 await self.send_message(
                     {"event": "close", "data": "done"}, send_msg_key
                 )
-            return answer
+            return oxy_response
         except Exception:
             logger.error(traceback.format_exc())
             raise
@@ -878,8 +883,7 @@ class MAS(BaseModel):
                 data={"first_query": self.first_query if self.first_query else ""}
             ).to_dict()
 
-        @app.api_route("/sse/chat", methods=["GET", "POST"])
-        async def sse_chat(request: Request):
+        async def request_to_payload(request: Request):
             if request.method == "GET":
                 params = dict(request.query_params)
                 payload = dict()
@@ -894,7 +898,7 @@ class MAS(BaseModel):
                 payload = await request.json()
 
             if "query" not in payload:
-                return WebResponse(code=400, message="query is required").to_dict()
+                payload["query"] = ""
 
             if "attachments" in payload:
                 attachments_with_path = []
@@ -928,6 +932,18 @@ class MAS(BaseModel):
 
             if "current_trace_id" not in payload:
                 payload["current_trace_id"] = shortuuid.ShortUUID().random(length=16)
+
+            return payload
+
+        @app.api_route("/chat", methods=["GET", "POST"])
+        async def chat(request: Request):
+            payload = await request_to_payload(request)
+            oxy_response = await self.chat_with_agent(payload=payload)
+            return oxy_response.output
+
+        @app.api_route("/sse/chat", methods=["GET", "POST"])
+        async def sse_chat(request: Request):
+            payload = await request_to_payload(request)
             current_trace_id = payload["current_trace_id"]
 
             logger.info(
