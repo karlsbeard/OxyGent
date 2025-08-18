@@ -7,6 +7,8 @@ from typing import Any, List, Literal, Optional, Union
 
 from pydantic import BaseModel, Field
 
+from ..config import Config
+
 
 class Function(BaseModel):
     """OpenAI Chat Completions function call."""
@@ -151,7 +153,7 @@ class Memory(BaseModel):
     """Fixed-size sliding window of recent chat messages."""
 
     messages: List[Message] = Field(default_factory=list)
-    max_messages: int = Field(default=10)
+    max_messages: int = Field(default=Config.get_agent_max_memory_rounds() * 2)
 
     def add_message(self, message: Message) -> None:
         """Add a message to memory."""

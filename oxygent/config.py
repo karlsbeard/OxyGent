@@ -85,6 +85,7 @@ class Config:
                 "properties": {"query": {"description": "Query question"}},
                 "required": ["query"],
             },
+            "max_memory_rounds": 5,
         },
     }
 
@@ -480,3 +481,11 @@ class Config:
     @classmethod
     def get_agent_input_schema(cls):
         return cls.get_module_config("agent", "input_schema")
+
+    @classmethod
+    def set_agent_max_memory_rounds(cls, max_memory_rounds):
+        cls.set_module_config("agent", "max_memory_rounds", max_memory_rounds)
+
+    @classmethod
+    def get_agent_max_memory_rounds(cls):
+        return cls.get_module_config("agent", "max_memory_rounds")
