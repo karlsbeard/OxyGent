@@ -1,5 +1,6 @@
-from oxygent.oxy import FunctionHub
 from pydantic import Field, fields
+
+from oxygent.oxy import FunctionHub
 
 time_tools = FunctionHub(name="time_tools")
 
@@ -10,8 +11,9 @@ def get_current_time(
         description="IANA timezone name (e.g., 'America/New_York', 'Europe/London'). Use 'Asia/Shanghai' as local timezone if no timezone provided by the user. "
     ),
 ) -> str:
-    from pytz import timezone as pytimezone
     from datetime import datetime
+
+    from pytz import timezone as pytimezone
 
     if isinstance(timezone, fields.FieldInfo):
         timezone = "Asia/Shanghai"
@@ -32,6 +34,7 @@ def convert_time(
     ),
 ) -> str:
     from datetime import datetime
+
     import pytz
 
     dt = datetime.strptime(time, "%H:%M")

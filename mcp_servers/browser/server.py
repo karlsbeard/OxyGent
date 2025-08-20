@@ -5,72 +5,31 @@ MCP Server for Browser Operations
 它导入所有的浏览器工具模块，并提供一个运行MCP服务器的入口点。
 """
 
-import atexit
 import asyncio
-import sys
+import atexit
 import os
+import sys
 
 # 尝试使用相对导入（当作为包的一部分导入时）
 try:
-    from .core import mcp, _browser, _close_browser, browser_check_status
+    from .content import browser_snapshot, browser_take_screenshot
+    from .core import _browser, _close_browser, browser_check_status, mcp
+    from .interaction import browser_click, browser_hover, browser_type
+    from .login import browser_auto_login
     from .navigation import (
         browser_navigate,
         browser_navigate_back,
-        browser_navigate_forward
+        browser_navigate_forward,
     )
-    from .interaction import (
-        browser_click,
-        browser_hover,
-        browser_type
-    )
-    from .content import (
-        browser_snapshot,
-        browser_take_screenshot
-    )
-    from .tabs import (
-        browser_tab_list,
-        browser_tab_new,
-        browser_tab_close
-    )
-    from .login import (
-        browser_auto_login
-    )
-    from .search import (
-        browser_search
-    )
+    from .search import browser_search
+    from .tabs import browser_tab_close, browser_tab_list, browser_tab_new
 except ImportError:
     # 当作为主模块运行时，使用绝对导入
-    sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
-    from mcp_servers.browser.core import mcp, _browser, _close_browser, browser_check_status
-    from mcp_servers.browser.navigation import (
-        browser_navigate,
-        browser_navigate_back,
-        browser_navigate_forward
+    sys.path.insert(
+        0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
     )
-    from mcp_servers.browser.interaction import (
-        browser_click,
-        browser_hover,
-        browser_type
-    )
-    from mcp_servers.browser.content import (
-        browser_snapshot,
-        browser_take_screenshot
-    )
-    from mcp_servers.browser.tabs import (
-        browser_tab_list,
-        browser_tab_new,
-        browser_tab_close
-    )
-    from mcp_servers.browser.login import (
-        browser_auto_login
-    )
-    from mcp_servers.browser.search import (
-        browser_search
-    )
+    from mcp_servers.browser.core import _browser, _close_browser, mcp
     # 从utils.py导入_get_domain_from_url
-    from mcp_servers.browser.utils import (
-        _get_domain_from_url
-    )
 
 
 # 创建一个同步函数来关闭浏览器

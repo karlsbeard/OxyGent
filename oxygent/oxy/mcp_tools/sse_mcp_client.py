@@ -6,11 +6,11 @@ MCP servers to clients, ideal for streaming responses and live updates.
 """
 
 import logging
+from typing import Any, Dict, List
 
 from mcp import ClientSession
 from mcp.client.sse import sse_client
 from pydantic import AnyUrl, Field
-from typing import Dict, List, Any
 
 from ...utils.common_utils import build_url
 from .base_mcp_client import BaseMCPClient
@@ -27,9 +27,12 @@ class SSEMCPClient(BaseMCPClient):
     """
 
     sse_url: AnyUrl = Field("")
-    headers: Dict[str, str] = Field(default_factory=dict, description="Extra HTTP headers")
-    middlewares: List[Any] = Field(default_factory=list, description="Client-side MCP middlewares")
-
+    headers: Dict[str, str] = Field(
+        default_factory=dict, description="Extra HTTP headers"
+    )
+    middlewares: List[Any] = Field(
+        default_factory=list, description="Client-side MCP middlewares"
+    )
 
     async def init(self) -> None:
         """Initialize the SSE connection to the MCP server.
@@ -54,9 +57,10 @@ class SSEMCPClient(BaseMCPClient):
                 else:
                     logger.warning(
                         "Current MCP client does not expose add_middleware(); "
-                        "middleware %s ignored", mw
+                        "middleware %s ignored",
+                        mw,
                     )
-            
+
             await self._session.initialize()
             await self.list_tools()
         except Exception as e:
