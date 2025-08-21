@@ -38,7 +38,7 @@ The position of the class is:
 | Method                                                                | Coroutine （async） | Return Value                           | Purpose (concise)                                                           |
 | --------------------------------------------------------------------- | ----------------- | -------------------------------------- | --------------------------------------------------------------------------- |
 | `__init__(self)`                                                      | No                | `None`                                 | Initialize in-memory structures and default TTL/limits.                     |
-| `lpush(self, key, *values, ex=None, max_size=None, max_length=81920)` | Yes               | `int`                                  | Push values to the head; enforce TTL, size limit, and type/length handling. |
+| `lpush(self, key, *values, ex=None, max_size=None, max_length=20240)` | Yes               | `int`                                  | Push values to the head; enforce TTL, size limit, and type/length handling. |
 | `rpop(self, key)`                                                     | Yes               | `str \| bytes \| int \| float \| None` | Pop from the tail after checking expiration.                                |
 | `_check_expiry(self, key)`                                            | No                | `None`                                 | Remove a key if its TTL has expired.                                        |
 | `close(self)`                                                         | Yes               | `None`                                 | in inheritance                                                              |

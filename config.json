@@ -39,6 +39,11 @@
             "shared_data": {}
         },
         "redis": {},
+        "redis_param": {
+            "expire_time": 86400,
+            "max_size": 1024,
+            "max_length": 20480
+        },
         "server": {
             "host": "127.0.0.1",
             "port": 8080,

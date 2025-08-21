@@ -15,6 +15,8 @@ from typing import Union
 from aioredis import Redis
 from aioredis.exceptions import ConnectionError, TimeoutError
 
+from ...config import Config
+
 logger = logging.getLogger(__name__)
 
 
@@ -69,8 +71,9 @@ class JimdbApRedis:
         self.port = port
         self.password = password
         self.redis_pool = None
-        self.default_expire_time = 86400  # Default expiration: 24 hours 60 * 60 * 24
-        self.default_list_max_size = 1024
+        self.default_expire_time = Config.get_redis_expire_time()
+        self.default_list_max_size = Config.get_redis_max_size()
+        self.default_list_max_length = Config.get_redis_max_length() * 1024
 
         # Initialize Redis connection pool
         try:
@@ -203,9 +206,9 @@ class JimdbApRedis:
         self,
         key: str,
         *values: Union[bytes, int, str, float],
-        ex: int = 86400,
-        max_size: int = 1024,
-        max_length: int = 81920,
+        ex: int = None,
+        max_size: int = None,
+        max_length: int = None,
     ):
         """Push values to the left (head) of a list with size and length limits.
 
@@ -218,7 +221,7 @@ class JimdbApRedis:
             *values: Values to push (supports str, bytes, int, float, dict)
             ex: Expiration time in seconds (default: 1 day)
             max_size: Maximum number of elements to keep in list (default: 10)
-            max_length: Maximum length for string values (default: 81920)
+            max_length: Maximum length for string values (default: 20MB)
 
         Returns:
             int: The length of the list after the push operation
@@ -226,6 +229,13 @@ class JimdbApRedis:
         Raises:
             ValueError: If an unsupported value type is provided
         """
+        # Apply defaults if not specified
+        if ex is None:
+            ex = self.default_expire_time
+        if max_size is None:
+            max_size = self.default_list_max_size
+        if max_length is None:
+            max_length = self.default_list_max_length
         # Default value lehgth: 3
         # Process and validate input values
         new_values = []
@@ -238,12 +248,6 @@ class JimdbApRedis:
                 new_values.append(json.dumps(value, ensure_ascii=False)[:max_length])
             else:
                 raise ValueError(f"Unsupported value type: {type(value)}")
-
-        # Apply defaults if not specified
-        if ex is None:
-            ex = self.default_expire_time
-        if max_size is None:
-            max_size = self.default_list_max_size
 
         async with self.redis_pool.pipeline(transaction=False) as pipe:
             # Batch commands: use pipeline for operations

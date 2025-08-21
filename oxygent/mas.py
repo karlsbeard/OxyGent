@@ -72,6 +72,8 @@ class MAS(BaseModel):
 
     first_query: str = Field("")
 
+    welcome_message: str = Field(default_factory=Config.get_agent_welcome_message)
+
     agent_organization: dict = Field(default_factory=list)
 
     vearch_client: Optional[VearchDB] = Field(None)
@@ -579,7 +581,7 @@ class MAS(BaseModel):
             await self.es_client.index(
                 index=Config.get_app_name() + "_message", body=message_doc
             )
-        await self.redis_client.lpush(redis_key, bytes_msg, max_size=1024)
+        await self.redis_client.lpush(redis_key, bytes_msg)
 
     async def chat_with_agent(
         self,
@@ -732,7 +734,7 @@ class MAS(BaseModel):
             payload = {"query": query, "from_trace_id": from_trace_id}
             oxy_response = await self.chat_with_agent(payload=payload)
             from_trace_id = oxy_response.oxy_request.current_trace_id
-            # print("LLM: ", oxy_response.output)
+            print("LLM: ", oxy_response.output)
 
     # ------------------------------------------------------------------
     # FastAPI + SSE web service (unedited original docstring preserved)
@@ -786,13 +788,17 @@ class MAS(BaseModel):
             self.active_tasks[current_trace_id].cancel()
             raise
 
-    async def start_web_service(self, first_query=None, host=None, port=None):
+    async def start_web_service(
+        self, first_query=None, welcome_message=None, host=None, port=None
+    ):
         """Start the FastAPI + SSE service (see original inline documentation)."""
 
         if not self.master_agent_name:
             logger.warning("No agent was registered.")
 
         self.first_query = first_query  # First query would be displayed in the frontend
+        if welcome_message:
+            self.welcome_message = welcome_message
         if host is None:
             host = Config.get_server_host()
         if port is None:
@@ -881,6 +887,16 @@ class MAS(BaseModel):
         def get_first_query():
             return WebResponse(
                 data={"first_query": self.first_query if self.first_query else ""}
+            ).to_dict()
+
+        @app.get("/get_welcome_message")
+        def get_welcome_message():
+            return WebResponse(
+                data={
+                    "welcome_message": self.welcome_message
+                    if self.welcome_message
+                    else ""
+                }
             ).to_dict()
 
         async def request_to_payload(request: Request):

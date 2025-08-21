@@ -72,6 +72,11 @@ class Config:
         "es": {},
         "es_schema": {"shared_data": {}},
         "redis": {},
+        "redis_param": {
+            "expire_time": 86400,  # 24 hours 60 * 60 * 24
+            "max_size": 1024,
+            "max_length": 20480,  # 20MB
+        },
         "server": {
             "host": "127.0.0.1",
             "port": 8080,
@@ -86,6 +91,7 @@ class Config:
                 "required": ["query"],
             },
             "short_memory_size": 10,
+            "welcome_message": "Hi, I’m OxyGent. How can I assist you?",
         },
     }
 
@@ -398,6 +404,30 @@ class Config:
     def get_redis_config(cls):
         return cls.get_module_config("redis")
 
+    @classmethod
+    def set_redis_expire_time(cls, expire_time):
+        cls.set_module_config("redis_param", "expire_time", expire_time)
+
+    @classmethod
+    def get_redis_expire_time(cls):
+        return cls.get_module_config("redis_param", "expire_time")
+
+    @classmethod
+    def set_redis_max_size(cls, max_size):
+        cls.set_module_config("redis_param", "max_size", max_size)
+
+    @classmethod
+    def get_redis_max_size(cls):
+        return cls.get_module_config("redis_param", "max_size")
+
+    @classmethod
+    def set_redis_max_length(cls, max_length):
+        cls.set_module_config("redis_param", "max_length", max_length)
+
+    @classmethod
+    def get_redis_max_length(cls):
+        return cls.get_module_config("redis_param", "max_length")
+
     """ server """
 
     @classmethod
@@ -489,3 +519,11 @@ class Config:
     @classmethod
     def get_agent_short_memory_size(cls):
         return cls.get_module_config("agent", "short_memory_size")
+
+    @classmethod
+    def set_agent_welcome_message(cls, welcome_message):
+        cls.set_module_config("agent", "welcome_message", welcome_message)
+
+    @classmethod
+    def get_agent_welcome_message(cls):
+        return cls.get_module_config("agent", "welcome_message")
