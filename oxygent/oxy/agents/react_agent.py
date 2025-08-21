@@ -344,10 +344,12 @@ class ReActAgent(LocalAgent):
             temp_memory.add_message(Message.user_message(user_query_content))
             temp_memory.add_messages(react_memory.messages)
 
+            full_memory = temp_memory.to_dict_list()
             oxy_response = await oxy_request.call(
                 callee=self.llm_model,
-                arguments={"messages": temp_memory.to_dict_list()},
+                arguments={"messages": full_memory},
             )
+            oxy_request.arguments["full_memory"] = full_memory
             llm_response = self.func_parse_llm_response(
                 oxy_response.output, oxy_request
             )

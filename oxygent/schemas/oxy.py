@@ -409,6 +409,10 @@ class OxyRequest(BaseModel):
         """Manually override the group_id."""
         self.group_id = request_id
 
+    async def break_task(self):
+        await self.send_message({"event": "close", "data": "done"})
+        self.mas.active_tasks[self.current_trace_id].cancel()
+
 
 class OxyResponse(BaseModel):
     """Result of an oxy execution.
