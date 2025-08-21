@@ -17,14 +17,17 @@ logger = logging.getLogger(__name__)
 
 
 class SQLFunctionHub(FunctionHub):
-    db_engine: Engine
-    Session: sessionmaker[Session]
+    db_engine: Optional[Engine] = None
+    Session: Optional[sessionmaker[Session]] = None
 
-    def __init__(self, name: str):
-        super().__init__(name=name)
-        self.init_db()
+    class Config:
+        arbitrary_types_allowed = True
 
-    def init_db(self):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.init_config()
+
+    def init_config(self):
         # "{dialect}://{user}:{password}@{host}:{port}")
         db_url: str = os.getenv("SQL_TOOLS_DB_URL")
         if not db_url:
