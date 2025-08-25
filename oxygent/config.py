@@ -67,6 +67,7 @@ class Config:
             "is_send_answer": True,
             "is_stored": False,
             "is_show_in_terminal": False,
+            "is_send_full_arguments": False,
         },
         "vearch": {},
         "es": {},
@@ -351,6 +352,16 @@ class Config:
     @classmethod
     def get_message_is_show_in_terminal(cls):
         return cls.get_module_config("message", "is_show_in_terminal")
+
+    @classmethod
+    def set_message_is_send_full_arguments(cls, is_send_full_arguments=True):
+        cls.set_module_config(
+            "message", "is_send_full_arguments", is_send_full_arguments
+        )
+
+    @classmethod
+    def get_message_is_send_full_arguments(cls):
+        return cls.get_module_config("message", "is_send_full_arguments")
 
     """ es """
 

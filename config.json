@@ -31,7 +31,8 @@
             "is_send_think": false,
             "is_send_answer": true,
             "is_stored": false,
-            "is_show_in_terminal": false
+            "is_show_in_terminal": false,
+            "is_send_full_arguments": false
         },
         "vearch": {},
         "es": {},

@@ -543,6 +543,10 @@
             return;
         }
         let jm = JSON.parse(message);
+        if (!["tool_call", "observation"].includes(jm["type"])) {
+            return;
+        }
+
         console.log(historys.length + 1, JSON.parse(JSON.stringify(jm)));
 
         var history = {};
@@ -1043,6 +1047,12 @@
 
     function begin() {
         show_id = 0;
+        div_right.empty();
+        div_right.append(`
+            <div class="agent-empty">
+                <img class="empty-img" src="./image/empty.svg" alt="">
+            </div>
+        `);
         show_step();
         show_by_history(historys[show_id]);
     }

@@ -345,6 +345,12 @@ class Oxy(BaseModel, ABC):
         """Send tool call message to frontend if enabled."""
         # Send tool_call message to frontend
         if self.is_send_tool_call:
+            if Config.get_message_is_send_full_arguments():
+                arguments = filter_json_types(oxy_request.arguments)
+            else:
+                arguments = {
+                    k: v for k, v in oxy_request.arguments.items() if k in ["query"]
+                }
             await oxy_request.send_message(
                 {
                     "type": "tool_call",
@@ -355,7 +361,7 @@ class Oxy(BaseModel, ABC):
                         "caller_category": oxy_request.caller_category,
                         "callee_category": oxy_request.callee_category,
                         "call_stack": oxy_request.call_stack,
-                        "arguments": filter_json_types(oxy_request.arguments),
+                        "arguments": arguments,
                         "request_id": oxy_request.request_id,
                     },
                 }
