@@ -350,7 +350,10 @@ class MAS(BaseModel):
             host = redis_config["host"]
             port = redis_config["port"]
             password = redis_config["password"]
-            self.redis_client = JimdbApRedis(host=host, port=port, password=password)
+            db = redis_config.get("db", 0)
+            self.redis_client = JimdbApRedis(
+                host=host, port=port, password=password, db=db
+            )
         else:
             self.redis_client = LocalRedis()
 

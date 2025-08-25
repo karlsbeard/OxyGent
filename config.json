@@ -72,6 +72,12 @@
             ],
             "user": "${ES_TEST_USER}",
             "password": "${ES_TEST_PASSWORD}"
+        },
+        "redis": {
+            "host": "${REDIS_HOST}",
+            "port": 5360,
+            "password": "${REDIS_TEST_PASSWORD}",
+            "db": 0
         }
     },
     "test": {

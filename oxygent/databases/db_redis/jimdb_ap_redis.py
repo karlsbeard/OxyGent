@@ -59,7 +59,7 @@ class JimdbApRedis:
     built-in size limits and expiration handling.
     """
 
-    def __init__(self, host, port, password):
+    def __init__(self, host, port, password, db=0):
         """Initialize the JimDB Redis client.
 
         Args:
@@ -70,6 +70,7 @@ class JimdbApRedis:
         self.host = host
         self.port = port
         self.password = password
+        self.db = db
         self.redis_pool = None
         self.default_expire_time = Config.get_redis_expire_time()
         self.default_list_max_size = Config.get_redis_max_size()
@@ -89,7 +90,7 @@ class JimdbApRedis:
             Redis: Redis connection pool configured for JimDB usage
         """
         return Redis.from_url(
-            f"redis://{self.host}:{self.port}",
+            f"redis://{self.host}:{self.port}/{self.db}",
             password=self.password,
             max_connections=5,
             # decode_responses=True,  # Automatic decoding (disabled)
