@@ -10,7 +10,7 @@ async def test_simple_code_execution():
     assert output == "5"
     code = "x = 10"
     output = await run_python_code(code)
-    assert output == "successfully ran python code"
+    assert output == "successfully run python code"
     code = "x = 5"
     output = await run_python_code(code, variable_to_return="y")
     assert output == "Variable y not found"
