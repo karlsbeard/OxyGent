@@ -10,6 +10,7 @@ import logging
 from contextlib import AsyncExitStack
 from typing import Any
 
+import anyio
 from mcp import ClientSession
 from pydantic import Field
 
@@ -98,7 +99,15 @@ class BaseMCPClient(BaseTool):
         if not self._session:
             raise RuntimeError(f"Server {self.name} not initialized")
 
-        mcp_response = await self._session.call_tool(tool_name, oxy_request.arguments)
+        try:
+            mcp_response = await self._session.call_tool(
+                tool_name, oxy_request.arguments
+            )
+        except anyio.ClosedResourceError:
+            await self.init(is_fetch_tools=False)  # TODO: refetch tools
+            mcp_response = await self._session.call_tool(
+                tool_name, oxy_request.arguments
+            )
         # TODO: Handle result objects and progress tracking
         results = [content.text.strip() for content in mcp_response.content]
         return OxyResponse(

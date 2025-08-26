@@ -34,7 +34,7 @@ class SSEMCPClient(BaseMCPClient):
         default_factory=list, description="Client-side MCP middlewares"
     )
 
-    async def init(self) -> None:
+    async def init(self, is_fetch_tools=True) -> None:
         """Initialize the SSE connection to the MCP server.
 
         Establishes a Server-Sent Events connection to the MCP server, creates a client
@@ -62,7 +62,8 @@ class SSEMCPClient(BaseMCPClient):
                     )
 
             await self._session.initialize()
-            await self.list_tools()
+            if is_fetch_tools:
+                await self.list_tools()
         except Exception as e:
             logger.error(f"Error initializing server {self.name}: {e}")
             await self.cleanup()

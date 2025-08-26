@@ -24,7 +24,7 @@ class StreamableMCPClient(BaseMCPClient):
         default_factory=list, description="Client-side MCP middlewares"
     )
 
-    async def init(self) -> None:
+    async def init(self, is_fetch_tools=True) -> None:
         """Initialize the HTTP streaming connection to the MCP server."""
         try:
             self._http_transport = await self._exit_stack.enter_async_context(
@@ -43,7 +43,8 @@ class StreamableMCPClient(BaseMCPClient):
                     logger.warning("middleware %s is ignored", mw)
 
             await self._session.initialize()
-            await self.list_tools()
+            if is_fetch_tools:
+                await self.list_tools()
         except Exception as e:
             logger.error("Error initializing server %s: %s", self.name, e)
             await self.cleanup()

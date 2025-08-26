@@ -49,7 +49,7 @@ class StdioMCPClient(BaseMCPClient):
             if not os.path.exists(mcp_tool_file):
                 raise FileNotFoundError(f"{mcp_tool_file} does not exist.")
 
-    async def init(self) -> None:
+    async def init(self, is_fetch_tools=True) -> None:
         """Initialize the stdio connection to the MCP server process.
 
         Spawns an external process (such as a Node.js script) that acts as an MCP server,
@@ -92,7 +92,8 @@ class StdioMCPClient(BaseMCPClient):
                 ClientSession(read, write)
             )
             await self._session.initialize()
-            await self.list_tools()
+            if is_fetch_tools:
+                await self.list_tools()
         except Exception as e:
             logger.error(f"Error initializing server {self.name}: {e}")
             await self.cleanup()
