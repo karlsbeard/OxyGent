@@ -124,11 +124,12 @@ class OxyRequest(BaseModel):
         # Quote messanger
         fields["mas"] = self.mas
         fields["shared_data"] = self.shared_data
+        fields["group_data"] = self.group_data
 
         fields["parallel_id"] = ""
         fields["latest_node_ids"] = []
         for k in fields:
-            if k not in ["mas", "shared_data", "parallel_id", "latest_node_ids"]:
+            if k not in ["mas", "shared_data", "parallel_id", "latest_node_ids", "group_data"]:
                 fields[k] = copy.deepcopy(fields[k], memo)
         return self.__class__(**fields)
 

@@ -250,7 +250,6 @@ class MAS(BaseModel):
             self.es_client = db_factory.get_instance(JesEs, hosts, user, password)
         else:
             self.es_client = db_factory.get_instance(LocalEs)
-
         # trace table
         await self.es_client.create_index(
             Config.get_app_name() + "_trace",
@@ -259,6 +258,7 @@ class MAS(BaseModel):
                     "properties": {
                         "request_id": {"type": "keyword"},
                         "group_id": {"type": "keyword"},
+                        "group_data": Config.get_es_schema_group_data(),
                         "trace_id": {"type": "keyword"},
                         "from_trace_id": {"type": "keyword"},
                         "root_trace_ids": {"type": "keyword"},
@@ -634,8 +634,10 @@ class MAS(BaseModel):
                 payload["shared_data"] = dict()
             payload["shared_data"]["query"] = payload["query"]
 
+            group_data = payload.get("group_data", {})
+
             # payload = payload or {}
-            # payload.setdefault("shared_data",{})["query"] = payload.get("query","")
+            # payload.set default("shared_data",{})["query"] = payload.get("query","")
 
             if "restart_node_id" in payload and payload.get("restart_node_id"):
                 es_response = await self.es_client.search(
@@ -679,6 +681,7 @@ class MAS(BaseModel):
                     )
 
             oxy_request = OxyRequest(mas=self)
+            oxy_request.group_data = group_data
             # Set group_id: inherit if from_trace_id is provided, else new
             if "from_trace_id" in payload and payload["from_trace_id"]:
                 es_response_group_id = await self.es_client.search(
@@ -688,9 +691,32 @@ class MAS(BaseModel):
                         "size": 1,
                     },
                 )
+
                 hits = es_response_group_id.get("hits", {}).get("hits", [])
                 if hits:
                     oxy_request.group_id = hits[0]["_source"].get("group_id", "")
+                    raw_group_data = hits[0]["_source"].get("group_data", {})
+                    if isinstance(raw_group_data, str):
+                        try:
+                            history_group_data = json.loads(raw_group_data)
+                        except json.JSONDecodeError:
+                            logger.warning("Failed to parse group_data from string, using empty dict")
+                            history_group_data = {}
+                    else:
+                        history_group_data = raw_group_data if isinstance(raw_group_data, dict) else {}
+
+                    merged_group_data = history_group_data.copy()
+                    merged_group_data.update(oxy_request.group_data)
+                    oxy_request.group_data = merged_group_data
+                    logger.info(
+                        f"继承历史会话 group_id: {oxy_request.group_id}, "
+                        f"历史 group_data: {history_group_data if history_group_data else '空'}, "
+                        f"当前 group_data: {oxy_request.group_data if oxy_request.group_data else '空'}, "
+                        f"合并后 group_data: {merged_group_data}"
+                    )
+                else:
+                    logger.warning(
+                        f"未找到 from_trace_id: {payload['from_trace_id']} 对应的记录，无法继承历史 group_data")
 
             oxy_request_fields = oxy_request.model_fields
             for k, v in payload.items():
