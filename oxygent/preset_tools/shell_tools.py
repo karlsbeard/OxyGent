@@ -14,8 +14,8 @@ shell_tools = FunctionHub(name="shell_tools")
 )
 def run_shell_command(
     args: List[str] = Field(description="command arguments"),
-    tail: int = Field(default=10),
-    base_dir: Optional[str] = Field(default=None, description="base directory")
+    tail: int = 10,
+    base_dir: Optional[str] = None
 ) -> str:
     """Runs a shell command and returns the output or error."""
 
