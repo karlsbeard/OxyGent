@@ -62,6 +62,32 @@ class StdioMCPClient(BaseMCPClient):
         3. Sets up environment variables
         4. Establishes stdio transport and session
         """
+
+        try:
+            server_params = await self.get_server_params()
+            stdio_transport = await self._exit_stack.enter_async_context(
+                stdio_client(server_params)
+            )
+            read, write = stdio_transport
+            self._session = await self._exit_stack.enter_async_context(
+                ClientSession(read, write)
+            )
+            await self._session.initialize()
+            if is_fetch_tools:
+                await self.list_tools()
+        except Exception as e:
+            logger.error(f"Error initializing server {self.name}: {e}")
+            await self.cleanup()
+            raise Exception(f"Server {self.name} error")
+
+    async def call_tool(self, tool_name, arguments):
+        server_params = await self.get_server_params()
+        async with stdio_client(server_params) as streams:
+            async with ClientSession(*streams) as session:
+                await session.initialize()
+                return await session.call_tool(tool_name, arguments)
+
+    async def get_server_params(self):
         command = (
             shutil.which("npx")
             if self.params["command"] == "npx"
@@ -83,18 +109,4 @@ class StdioMCPClient(BaseMCPClient):
             if self.params.get("env")
             else {**os.environ},
         )
-        try:
-            stdio_transport = await self._exit_stack.enter_async_context(
-                stdio_client(server_params)
-            )
-            read, write = stdio_transport
-            self._session = await self._exit_stack.enter_async_context(
-                ClientSession(read, write)
-            )
-            await self._session.initialize()
-            if is_fetch_tools:
-                await self.list_tools()
-        except Exception as e:
-            logger.error(f"Error initializing server {self.name}: {e}")
-            await self.cleanup()
-            raise Exception(f"Server {self.name} error")
+        return server_params
