@@ -372,7 +372,11 @@ class MAS(BaseModel):
             if not isinstance(oxy, class_type):
                 continue
             oxy.set_mas(self)
-            tasks.append(oxy.init())
+            task = oxy.init()
+            if Config.get_tool_is_concurrent_init():
+                tasks.append(task)
+            else:
+                await task
         if tasks:
             await asyncio.gather(*tasks)
 

@@ -34,7 +34,7 @@ class SSEMCPClient(BaseMCPClient):
         default_factory=list, description="Client-side MCP middlewares"
     )
 
-    async def init(self) -> None:
+    async def init(self, is_fetch_tools=True) -> None:
         """Initialize the SSE connection to the MCP server.
 
         Establishes a Server-Sent Events connection to the MCP server, creates a client
@@ -42,28 +42,42 @@ class SSEMCPClient(BaseMCPClient):
         server.
         """
         try:
-            # header
-            sse_transport = await self._exit_stack.enter_async_context(
-                sse_client(build_url(self.sse_url), headers=self.headers)
-            )
-            read, write = sse_transport
-            self._session = await self._exit_stack.enter_async_context(
-                ClientSession(read, write)
-            )
-            # middlewares(optional)
-            for mw in self.middlewares:
-                if hasattr(self._session, "add_middleware"):
-                    self._session.add_middleware(mw)
-                else:
-                    logger.warning(
-                        "Current MCP client does not expose add_middleware(); "
-                        "middleware %s ignored",
-                        mw,
-                    )
+            if self.is_keep_alive:
+                # header
+                sse_transport = await self._exit_stack.enter_async_context(
+                    sse_client(build_url(self.sse_url), headers=self.headers)
+                )
+                read, write = sse_transport
+                self._session = await self._exit_stack.enter_async_context(
+                    ClientSession(read, write)
+                )
+                # middlewares(optional)
+                for mw in self.middlewares:
+                    if hasattr(self._session, "add_middleware"):
+                        self._session.add_middleware(mw)
+                    else:
+                        logger.warning(
+                            "Current MCP client does not expose add_middleware(); "
+                            "middleware %s ignored",
+                            mw,
+                        )
 
-            await self._session.initialize()
-            await self.list_tools()
+                await self._session.initialize()
+                if is_fetch_tools:
+                    await self.list_tools()
+            else:
+                async with sse_client(build_url(self.sse_url)) as streams:
+                    async with ClientSession(*streams) as session:
+                        await session.initialize()
+                        tools_response = await session.list_tools()
+                        self.add_tools(tools_response)
         except Exception as e:
             logger.error(f"Error initializing server {self.name}: {e}")
             await self.cleanup()
             raise Exception(f"Server {self.name} error")
+
+    async def call_tool(self, tool_name, arguments):
+        async with sse_client(build_url(self.sse_url)) as streams:
+            async with ClientSession(*streams) as session:
+                await session.initialize()
+                return await session.call_tool(tool_name, arguments)

@@ -94,6 +94,7 @@ class Config:
             "short_memory_size": 10,
             "welcome_message": "Hi, I’m OxyGent. How can I assist you?",
         },
+        "tool": {"mcp_is_keep_alive": True, "is_concurrent_init": True},
     }
 
     @classmethod
@@ -547,3 +548,29 @@ class Config:
     @classmethod
     def get_agent_welcome_message(cls):
         return cls.get_module_config("agent", "welcome_message")
+
+    """ tool """
+
+    @classmethod
+    def set_tool_config(cls, tool_config):
+        cls.set_module_config("tool", tool_config)
+
+    @classmethod
+    def get_tool_config(cls):
+        return cls.get_module_config("tool")
+
+    @classmethod
+    def set_tool_mcp_is_keep_alive(cls, mcp_is_keep_alive):
+        cls.set_module_config("tool", "mcp_is_keep_alive", mcp_is_keep_alive)
+
+    @classmethod
+    def get_tool_mcp_is_keep_alive(cls):
+        return cls.get_module_config("tool", "mcp_is_keep_alive")
+
+    @classmethod
+    def set_tool_is_concurrent_init(cls, is_concurrent_init):
+        cls.set_module_config("tool", "is_concurrent_init", is_concurrent_init)
+
+    @classmethod
+    def get_tool_is_concurrent_init(cls):
+        return cls.get_module_config("tool", "is_concurrent_init")
