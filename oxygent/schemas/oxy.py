@@ -423,6 +423,50 @@ class OxyRequest(BaseModel):
         """Manually override the group_id."""
         self.group_id = request_id
 
+    def has_arguments(self, key):
+        return key in self.arguments
+
+    def get_arguments(self, key=None):
+        if key is None:
+            return self.arguments
+        return self.arguments.get(key)
+
+    def set_arguments(self, key, value):
+        self.arguments[key] = value
+
+    def has_shared_data(self, key):
+        return key in self.shared_data
+
+    def get_shared_data(self, key=None):
+        if key is None:
+            return self.shared_data
+        return self.shared_data.get(key)
+
+    def set_shared_data(self, key, value):
+        self.shared_data[key] = value
+
+    def has_group_data(self, key):
+        return key in self.group_data
+
+    def get_group_data(self, key=None):
+        if key is None:
+            return self.group_data
+        return self.group_data.get(key)
+
+    def set_group_data(self, key, value):
+        self.group_data[key] = value
+
+    def has_global_data(self, key):
+        return key in self.mas.global_data
+
+    def get_global_data(self, key=None):
+        if key is None:
+            return self.mas.global_data
+        return self.mas.global_data.get(key)
+
+    def set_global_data(self, key, value):
+        self.mas.global_data[key] = value
+
     async def break_task(self):
         await self.send_message({"event": "close", "data": "done"})
         self.mas.active_tasks[self.current_trace_id].cancel()

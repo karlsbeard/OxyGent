@@ -87,6 +87,8 @@ class MAS(BaseModel):
 
     message_prefix: str = Field("oxygent")
 
+    global_data: dict = Field(default_factory=dict)
+
     func_filter: Optional[Callable] = Field(
         lambda x: x, exclude=True, description="filter function"
     )
