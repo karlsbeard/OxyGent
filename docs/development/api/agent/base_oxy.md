@@ -1,88 +1,225 @@
-# Oxy
+# Base Oxy Class
 
----
-The position of the class is:
+## Overview
 
-```markdown
-[Oxy](./base_oxy.md)
-├── [BaseFlow](./base_flow.md)
-    └── [BaseAgent](./base_agent.md)
-        ├── [LocalAgent](./local_agent.md)
-        │       ├── [ParallelAgent](./parallel_agent.md)
-        │       ├── [ReActAgent](./react_agent.md)
-        │       ├── [ChatAgent](./chat_agent.md)
-        │       └── [WorkflowAgent](./workflow_agent.md)
-        └── [RemoteAgent](./remote_agent.md)
-                └── [SSEOxyGent](./sse_oxy_agent.md)
-└── [BaseTool](../tools/base_tools.md)
+The `Oxy` class is the abstract base class for all agents and tools in the OxyGent system. It provides the core execution lifecycle, permission management, message handling, and data persistence patterns.
+
+## Class Definition
+
+```python
+class Oxy(BaseModel, ABC)
 ```
----
 
-## Introduce
-`Oxy` is the abstract base class for all agents and tools in the OxyGent system.
+**Module**: `oxygent.oxy.base_oxy`
 
-This class defines the core execution lifecycle, permission management,message handling, and data persistence patterns. It provides a unifiedinterface for both local and remote execution with comprehensive logging and error handling capabilities.
+## Core Attributes
 
-## Parameters
-| Parameter                        | Type / Allowed value | Default                                    | Description                        |
-| -------------------------------- | -------------------- | ------------------------------------------ | ---------------------------------- |
-| `name`                           | `str`                | must be assigned                           | Identifier for the agent/tool      |
-| `desc`                           | `str`                | `""`                                       | Human-readable description         |
-| `category`                       | `str`                | `"tool"`                                   | Category classification            |
-| `class_name`                     | `Optional[str]`      | `None`                                     | Class name (filled post-init)      |
-| `input_schema`                   | `dict[str, Any]`     | `{}`                                       | Input schema definition            |
-| `desc_for_llm`                   | `str`                | `""`                                       | Description shown to LLM           |
-| `is_entrance`                    | `bool`               | `False`                                    | Whether this is a MAS entry point  |
-| `is_permission_required`         | `bool`               | `False`                                    | Whether execution needs permission |
-| `is_save_data`                   | `bool`               | `True`                                     | Persist execution data to store    |
-| `permitted_tool_name_list`       | `list`               | `[]`                                       | Tools the agent/tool may call      |
-| `extra_permitted_tool_name_list` | `list`               | `[]`                                       | Additional tool permissions        |
-| `is_send_tool_call`              | `bool`               | `Config.get_message_is_send_tool_call()`   | Send *tool\_call* messages         |
-| `is_send_observation`            | `bool`               | `Config.get_message_is_send_observation()` | Send *observation* messages        |
-| `is_send_answer`                 | `bool`               | `Config.get_message_is_send_answer()`      | Send *answer* messages             |
-| `is_detailed_tool_call`          | `bool`               | `Config.get_log_is_detailed_tool_call()`   | Verbose *tool\_call* logging       |
-| `is_detailed_observation`        | `bool`               | `Config.get_log_is_detailed_observation()` | Verbose *observation* logging      |
-| `func_process_input`             | `Callable`           | `lambda x: x`                              | Pre-processing hook for requests   |
-| `func_process_output`            | `Callable`           | `lambda x: x`                              | Post-processing hook for responses |
-| `func_format_input`              | `Optional[Callable]` | `lambda x: x`                              | Format request for the callee      |
-| `func_format_output`             | `Optional[Callable]` | `lambda x: x`                              | Format response for the caller     |
-| `func_execute`                   | `Optional[Callable]` | `None`                                     | Custom execution entrypoint        |
-| `mas`                            | `Optional[Any]`      | `None`                                     | Reference to MAS instance          |
-| `friendly_error_text`            | `Optional[str]`      | `None`                                     | User-facing fallback error message |
-| `semaphore`                      | `int`                | `16`                                       | Maximum concurrent executions      |
-| `timeout`                        | `float`              | `3600`                                     | Timeout (seconds)                  |
-| `retries`                        | `int`                | `2`                                        | Retry attempts on failure          |
-| `delay`                          | `float`              | `1.0`                                      | Delay (seconds) between retries    |
+### Identity & Description
 
-## Methods
-| Method                              | Coroutine （async） | Purpose (concise)                                        |
-| ----------------------------------- | ----------------- | -------------------------------------------------------- |
-| `__init__(**kwargs)`                | No                | Construct object, initialise semaphore & LLM description |
-| `model_post_init(__context)`        | No                | Fill `class_name` after Pydantic init                    |
-| `set_mas(mas)`                      | No                | Attach MAS reference                                     |
-| `add_permitted_tool(tool_name)`     | No                | Add one tool to permission list                          |
-| `add_permitted_tools(tool_names)`   | No                | Batch-add tool permissions                               |
-| `_set_desc_for_llm()`               | No                | Build human/LLM-friendly argument doc                    |
-| `init()`                            | Yes               | in inheritance                                           |
-| `_pre_process(oxy_request)`         | Yes               | Populate IDs, stacks, run input hook                     |
-| `_pre_log(oxy_request)`             | Yes               | Emit *tool\_call* log entry                              |
-| `_request_interceptor(oxy_request)` | Yes               | Restore cached output for restarts                       |
-| `_pre_save_data(oxy_request)`       | Yes               | Persist initial node metadata                            |
-| `_format_input(oxy_request)`        | Yes               | Apply caller-side formatting                             |
-| `_pre_send_message(oxy_request)`    | Yes               | Forward *tool\_call* message to front-end                |
-| `_before_execute(oxy_request)`      | Yes               | Custom hook before main execution                        |
-| `_execute(oxy_request)`             | Yes               | in inheritance                                           |
-| `_handle_exception(e)`              | Yes               | in inheritance                                           |
-| `_after_execute(oxy_response)`      | Yes               | Custom hook after main execution                         |
-| `_post_process(oxy_response)`       | Yes               | Apply response post-processing                           |
-| `_post_log(oxy_response)`           | Yes               | Emit *observation* log                                   |
-| `_post_save_data(oxy_response)`     | Yes               | Persist final node data                                  |
-| `_format_output(oxy_response)`      | No                | Final formatting & friendly-error swap                   |
-| `_post_send_message(oxy_response)`  | Yes               | Send *observation* / *answer* to front-end               |
-| `execute(oxy_request)`              | Yes               | Orchestrate the full async lifecycle with retries        |
+- `name` (str, required): Unique identifier for the agent/tool
+- `desc` (str): Human-readable description of functionality
+- `category` (str): Category classification (default: "tool")
+- `class_name` (Optional[str]): Class name (auto-generated)
 
-> Methods whose bodies are just `pass` are flagged “in inheritance”, meaning subclasses must implement them.
+### Schema & LLM Integration
 
-## Usage
+- `input_schema` (dict[str, Any]): Input schema definition
+- `desc_for_llm` (str): LLM-friendly description (auto-generated from schema)
 
-The class `Oxy` must be inherited.
+### Permissions & Access Control
+
+- `is_entrance` (bool): Whether this is a MAS entry point (default: False)
+- `is_permission_required` (bool): Whether permission is needed for execution (default: False)
+- `permitted_tool_name_list` (list): List of tools this entity can call
+- `extra_permitted_tool_name_list` (list): Additional tool permissions
+
+### Data Management
+
+- `is_save_data` (bool): Whether to save execution data (default: True)
+
+### Message Control
+
+- `is_send_tool_call` (bool): Whether to send tool_call messages
+- `is_send_observation` (bool): Whether to send observation messages
+- `is_send_answer` (bool): Whether to send answer messages
+
+### Logging Control
+
+- `is_detailed_tool_call` (bool): Whether to show detailed tool_call logs
+- `is_detailed_observation` (bool): Whether to show detailed observation logs
+
+### Execution Control
+
+- `semaphore` (int): Maximum concurrent executions (default: 16)
+- `timeout` (float): Execution timeout in seconds (default: 3600)
+- `retries` (int): Number of retry attempts on failure (default: 2)
+- `delay` (float): Delay between retries (default: 1.0)
+
+### Processing Functions
+
+- `func_process_input` (Callable): Input processing function
+- `func_process_output` (Callable): Output processing function
+- `func_format_input` (Optional[Callable]): Input formatting for callee
+- `func_format_output` (Optional[Callable]): Output formatting for caller
+- `func_execute` (Optional[Callable]): Custom execution function
+- `func_interceptor` (Optional[Callable]): Request interceptor function
+
+### System Integration
+
+- `mas` (Optional[Any]): MAS instance reference (excluded from serialization)
+- `friendly_error_text` (Optional[str]): User-friendly error message
+
+## Core Methods
+
+### Abstract Methods
+
+#### `async def _execute(self, oxy_request: OxyRequest) -> OxyResponse`
+
+Main execution method that must be implemented by subclasses.
+
+**Parameters:**
+
+- `oxy_request` (OxyRequest): The request to execute
+
+**Returns:**
+
+- `OxyResponse`: The execution result
+
+### Lifecycle Methods
+
+#### `async def execute(self, oxy_request: OxyRequest) -> OxyResponse`
+
+Complete execution lifecycle orchestrator. Handles:
+
+- Pre-processing
+- Logging and data saving
+- Input formatting and validation
+- Permission checks
+- Execution with retry logic
+- Post-processing
+- Output formatting
+
+**Parameters:**
+
+- `oxy_request` (OxyRequest): The request to execute
+
+**Returns:**
+
+- `OxyResponse`: The formatted execution result
+
+#### `async def init(self)`
+
+Initialize the Oxy instance. Override for custom initialization.
+
+### Hook Methods
+
+#### `async def _pre_process(self, oxy_request: OxyRequest) -> OxyRequest`
+
+Pre-process the request before execution.
+
+#### `async def _pre_log(self, oxy_request: OxyRequest)`
+
+Log the tool call information before execution.
+
+#### `async def _pre_save_data(self, oxy_request: OxyRequest)`
+
+Save preliminary execution data.
+
+#### `async def _pre_send_message(self, oxy_request: OxyRequest)`
+
+Send tool call message to frontend if enabled.
+
+#### `async def _before_execute(self, oxy_request: OxyRequest) -> OxyRequest`
+
+Final preparation before execution.
+
+#### `async def _after_execute(self, oxy_response: OxyResponse) -> OxyResponse`
+
+Process response after execution.
+
+#### `async def _post_process(self, oxy_response: OxyResponse) -> OxyResponse`
+
+Post-process the response.
+
+#### `async def _post_log(self, oxy_response: OxyResponse)`
+
+Log the execution result.
+
+#### `async def _post_save_data(self, oxy_response: OxyResponse)`
+
+Save complete execution data to Elasticsearch.
+
+#### `async def _post_send_message(self, oxy_response: OxyResponse)`
+
+Send observation and answer messages to frontend if enabled.
+
+#### `async def _handle_exception(self, e)`
+
+Handle execution exceptions. Override for custom error handling.
+
+### Utility Methods
+
+#### `def set_mas(self, mas)`
+
+Set the MAS (Multi-Agent System) reference.
+
+#### `def add_permitted_tool(self, tool_name: str)`
+
+Add a tool to the permitted tools list.
+
+#### `def add_permitted_tools(self, tool_names: list)`
+
+Add multiple tools to the permitted tools list.
+
+## Data Persistence
+
+The Oxy class automatically saves execution data to Elasticsearch when `is_save_data=True`:
+
+- **Pre-execution**: Saves request metadata to `{app_name}_node` index
+- **Post-execution**: Updates with complete execution data including input, output, and execution state
+
+## Error Handling & Retries
+
+The class provides built-in retry logic:
+
+1. Attempts execution up to `retries` times
+2. Waits `delay` seconds between retries
+3. Handles `asyncio.CancelledError` specially
+4. Logs all exceptions with trace information
+5. Returns FAILED state response on final failure
+
+## Message Flow
+
+The execution lifecycle sends messages to frontend when enabled:
+
+1. **tool_call**: Before execution (if `is_send_tool_call=True`)
+2. **observation**: After execution (if `is_send_observation=True`)
+3. **answer**: For user-originated calls (if `is_send_answer=True`)
+
+## Usage Example
+
+```python
+from oxygent.oxy.base_oxy import Oxy
+from oxygent.schemas import OxyRequest, OxyResponse, OxyState
+
+class MyCustomTool(Oxy):
+    def __init__(self, **kwargs):
+        super().__init__(
+            name="my_tool",
+            desc="A custom tool implementation",
+            category="tool",
+            **kwargs
+        )
+    
+    async def _execute(self, oxy_request: OxyRequest) -> OxyResponse:
+        # Custom execution logic
+        result = self.process_input(oxy_request.arguments)
+        return OxyResponse(
+            state=OxyState.COMPLETED,
+            output=result
+        )
+```
+
+## Thread Safety
+
+The Oxy class uses `asyncio.Semaphore` for concurrency control, limiting simultaneous executions to the `semaphore` value.

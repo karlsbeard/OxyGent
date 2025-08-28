@@ -1,52 +1,136 @@
-# BaseFlow
+# BaseFlow Class
 
----
-The position of the class is:
+## Overview
 
+The `BaseFlow` class serves as the abstract base class for all flows in the OxyGent system. Flows are specialized Oxy instances that orchestrate complex workflows and coordinate multiple agents or tools.
 
-```markdown
-[Oxy](./base_oxy.md)
-├── [BaseFlow](./base_flow.md)
-    └── [BaseAgent](./base_agent.md)
-        ├── [LocalAgent](./local_agent.md)
-        │       ├── [ParallelAgent](./parallel_agent.md)
-        │       ├── [ReActAgent](./react_agent.md)
-        │       ├── [ChatAgent](./chat_agent.md)
-        │       └── [WorkflowAgent](./workflow_agent.md)
-        └── [RemoteAgent](./remote_agent.md)
-                └── [SSEOxyGent](./sse_oxy_agent.md)
-└── [BaseTool](../tools/base_tools.md)
+## Class Definition
+
+```python
+class BaseFlow(Oxy)
 ```
 
----
+**Module**: `oxygent.oxy.base_flow`  
+**Inherits from**: `Oxy`
 
-## Introduce
+## Core Attributes
 
-`BaseFlow` is the base flow module for OxyGent framework.
+### Flow Configuration
+- `is_permission_required` (bool): Whether this flow requires permission (default: True)
+- `category` (str): Flow category identifier (default: "agent")
+- `is_master` (bool): Whether this flow is a 'MASTER' (central controller) (default: False)
 
-This module provides the `BaseFlow` class, which serves as the abstract base class for all the agents and flows in the OxyGent system. Flows are specialized Oxy instances that orchestrate complex workflows and coordinate multiple agents or tools.
+## Abstract Methods
 
-## Parameters
+### `async def _execute(self, oxy_request: OxyRequest) -> OxyResponse`
+**Status**: Not implemented (raises `NotImplementedError`)
 
+This method must be overridden by concrete flow implementations to define the specific workflow logic.
 
-| Parameter                | Type / Allowed value | Default   | Description                                                                     |
-| ------------------------ | -------------------- | --------- | ------------------------------------------------------------------------------- |
-| `is_permission_required` | `bool`               | `True`    | Whether this flow requires explicit permission before it can run.               |
-| `category`               | `str`                | `"agent"` | Category flag inherited from `Oxy`; flows may later override this to `"flow"`.  |
-| `is_master`              | `bool`               | `False`   | Marks the flow as the central “MASTER” controller when set.                     |
+**Parameters:**
+- `oxy_request` (OxyRequest): The request containing workflow parameters and context
 
+**Returns:**
+- `OxyResponse`: The workflow execution result
 
-## Methods
+**Raises:**
+- `NotImplementedError`: Always raised in the base class
 
+## Key Differences from Oxy
 
-| Method                        | Coroutine (async) | Purpose (concise)                                                                                         |
-| ----------------------------- | ----------------- | --------------------------------------------------------------------------------------------------------- |
-| `_execute(self, oxy_request)` | Yes               | Core execution hook for a flow; subclasses **must** implement—current body raises `NotImplementedError`.  |
+The BaseFlow class differs from the base Oxy class in the following ways:
 
+1. **Default Permission**: Flows require permission by default (`is_permission_required=True`)
+2. **Category**: Flows are categorized as "agent" rather than "tool"
+3. **Master Role**: Flows can be designated as master controllers in complex systems
 
-## Inherited
- Please refer to the [Oxy](./base_oxy.md) class for inherited parameters and methods.
+## Usage Pattern
 
-## Usage
+BaseFlow is designed to be subclassed for implementing specific workflow patterns:
 
-The class `BaseFlow` must be inherited.
+```python
+from oxygent.oxy.base_flow import BaseFlow
+from oxygent.schemas import OxyRequest, OxyResponse, OxyState
+
+class MyWorkflow(BaseFlow):
+    def __init__(self, **kwargs):
+        super().__init__(
+            name="my_workflow",
+            desc="Custom workflow implementation",
+            **kwargs
+        )
+    
+    async def _execute(self, oxy_request: OxyRequest) -> OxyResponse:
+        # Implement workflow logic
+        # This might involve:
+        # 1. Parsing workflow parameters
+        # 2. Coordinating multiple agents/tools
+        # 3. Managing workflow state
+        # 4. Handling branching logic
+        # 5. Aggregating results
+        
+        result = await self.execute_workflow_steps(oxy_request)
+        
+        return OxyResponse(
+            state=OxyState.COMPLETED,
+            output=result,
+            extra={"workflow_metadata": self.get_execution_metadata()}
+        )
+    
+    async def execute_workflow_steps(self, oxy_request: OxyRequest):
+        # Custom workflow implementation
+        pass
+```
+
+## Common Flow Implementations
+
+The OxyGent framework provides several concrete flow implementations:
+
+- **Workflow**: Sequential workflow execution
+- **PlanAndSolve**: Planning-based execution flow
+- **Reflexion**: Self-reflective execution flow
+- **ParallelFlow**: Concurrent execution flow
+
+## Integration with MAS
+
+BaseFlow instances are fully integrated with the Multi-Agent System (MAS):
+
+- Inherit all Oxy lifecycle methods and data persistence
+- Support for permission management and tool access
+- Integration with Elasticsearch for workflow tracking
+- Message passing capabilities for frontend communication
+
+## Master Flow Pattern
+
+When `is_master=True`, the flow acts as a central controller:
+
+```python
+master_flow = MyWorkflow(
+    name="orchestrator",
+    desc="Master workflow controller",
+    is_master=True,
+    is_permission_required=True
+)
+```
+
+Master flows typically:
+- Coordinate multiple sub-workflows
+- Manage global workflow state
+- Handle complex decision making
+- Serve as entry points for complex multi-step processes
+
+## Error Handling
+
+BaseFlow inherits all error handling capabilities from Oxy:
+- Automatic retry logic
+- Exception logging with trace information
+- Graceful failure handling
+- Integration with friendly error messages
+
+## Best Practices
+
+1. **Override _execute**: Always implement the `_execute` method in concrete flows
+2. **State Management**: Use the `extra` field in OxyResponse for workflow state
+3. **Error Propagation**: Let exceptions bubble up for automatic retry handling
+4. **Tool Coordination**: Use `oxy_request.call()` for coordinating with other agents/tools
+5. **Logging**: Leverage inherited logging capabilities for workflow tracking
