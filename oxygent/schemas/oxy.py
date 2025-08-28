@@ -121,17 +121,30 @@ class OxyRequest(BaseModel):
     def __deepcopy__(self, memo):
         # Dump all the fields into a dict
         fields = self.model_dump()
-        # Quote messanger
-        fields["mas"] = self.mas
-        fields["shared_data"] = self.shared_data
-        fields["group_data"] = self.group_data
 
-        fields["parallel_id"] = ""
-        fields["latest_node_ids"] = []
+        # Quote messanger
+        temp_data = {
+            "mas": None,
+            "shared_data": dict(),
+            "group_data": dict(),
+            "parallel_id": "",
+            "latest_node_ids": [],
+        }
+        for k, v in temp_data.items():
+            fields[k] = v
         for k in fields:
-            if k not in ["mas", "shared_data", "parallel_id", "latest_node_ids", "group_data"]:
+            if k not in temp_data:
                 fields[k] = copy.deepcopy(fields[k], memo)
-        return self.__class__(**fields)
+
+        # 创建新实例
+        new_instance = self.__class__(**fields)
+
+        # 直接赋值共享引用，而不是深拷贝
+        new_instance.mas = self.mas
+        new_instance.shared_data = self.shared_data
+        new_instance.group_data = self.group_data
+
+        return new_instance
 
     def clone_with(self, **kwargs) -> "OxyRequest":
         """Return a deep copy with selected fields overridden.

@@ -686,6 +686,8 @@ class MAS(BaseModel):
 
             oxy_request = OxyRequest(mas=self)
             oxy_request.group_data = group_data
+            if "current_trace_id" in payload and payload["current_trace_id"]:
+                oxy_request.current_trace_id = payload["current_trace_id"]
             # Set group_id: inherit if from_trace_id is provided, else new
             if "from_trace_id" in payload and payload["from_trace_id"]:
                 es_response_group_id = await self.es_client.search(
@@ -704,23 +706,30 @@ class MAS(BaseModel):
                         try:
                             history_group_data = json.loads(raw_group_data)
                         except json.JSONDecodeError:
-                            logger.warning("Failed to parse group_data from string, using empty dict")
+                            logger.warning(
+                                "Failed to parse group_data from string, using empty dict"
+                            )
                             history_group_data = {}
                     else:
-                        history_group_data = raw_group_data if isinstance(raw_group_data, dict) else {}
+                        history_group_data = (
+                            raw_group_data if isinstance(raw_group_data, dict) else {}
+                        )
 
                     merged_group_data = history_group_data.copy()
                     merged_group_data.update(oxy_request.group_data)
                     oxy_request.group_data = merged_group_data
-                    logger.info(
+                    logger.debug(
                         f"继承历史会话 group_id: {oxy_request.group_id}, "
                         f"历史 group_data: {history_group_data if history_group_data else '空'}, "
                         f"当前 group_data: {oxy_request.group_data if oxy_request.group_data else '空'}, "
-                        f"合并后 group_data: {merged_group_data}"
+                        f"合并后 group_data: {merged_group_data}",
+                        extra={"trace_id": oxy_request.current_trace_id},
                     )
                 else:
                     logger.warning(
-                        f"未找到 from_trace_id: {payload['from_trace_id']} 对应的记录，无法继承历史 group_data")
+                        f"未找到 from_trace_id: {payload['from_trace_id']} 对应的记录，无法继承历史 group_data",
+                        extra={"trace_id": oxy_request.current_trace_id},
+                    )
 
             oxy_request_fields = oxy_request.model_fields
             for k, v in payload.items():
