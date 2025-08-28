@@ -49,7 +49,9 @@ class StreamableMCPClient(BaseMCPClient):
                 if is_fetch_tools:
                     await self.list_tools()
             else:
-                async with streamablehttp_client(build_url(self.server_url)) as (
+                async with streamablehttp_client(
+                    build_url(self.server_url), headers=self.headers
+                ) as (
                     read,
                     write,
                     _,
@@ -64,7 +66,9 @@ class StreamableMCPClient(BaseMCPClient):
             raise Exception(f"Server {self.name} error") from e
 
     async def call_tool(self, tool_name, arguments):
-        async with streamablehttp_client(build_url(self.server_url)) as (
+        async with streamablehttp_client(
+            build_url(self.server_url), headers=self.headers
+        ) as (
             read,
             write,
             _,

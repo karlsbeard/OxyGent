@@ -66,7 +66,9 @@ class SSEMCPClient(BaseMCPClient):
                 if is_fetch_tools:
                     await self.list_tools()
             else:
-                async with sse_client(build_url(self.sse_url)) as streams:
+                async with sse_client(
+                    build_url(self.sse_url), headers=self.headers
+                ) as streams:
                     async with ClientSession(*streams) as session:
                         await session.initialize()
                         tools_response = await session.list_tools()
@@ -77,7 +79,7 @@ class SSEMCPClient(BaseMCPClient):
             raise Exception(f"Server {self.name} error")
 
     async def call_tool(self, tool_name, arguments):
-        async with sse_client(build_url(self.sse_url)) as streams:
+        async with sse_client(build_url(self.sse_url), headers=self.headers) as streams:
             async with ClientSession(*streams) as session:
                 await session.initialize()
                 return await session.call_tool(tool_name, arguments)

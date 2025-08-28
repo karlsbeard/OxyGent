@@ -71,7 +71,7 @@ class Config:
         },
         "vearch": {},
         "es": {},
-        "es_schema": {"shared_data": {}, "group_data": {"type": "text"}},
+        "es_schema": {"shared_data": {"type": "text"}, "group_data": {"type": "text"}},
         "redis": {},
         "redis_param": {
             "expire_time": 86400,  # 24 hours 60 * 60 * 24
@@ -391,7 +391,6 @@ class Config:
     @classmethod
     def get_es_schema_shared_data(cls) -> dict:
         return cls.get_module_config("es_schema", "shared_data")
-
 
     @classmethod
     def set_es_schema_group_data(cls, es_schema_config):

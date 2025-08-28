@@ -87,6 +87,18 @@ class BaseAgent(BaseFlow):
 
         if oxy_request.caller_category == "user":
             if self.mas and self.mas.es_client:
+                # save group_data
+                group_data_schema = Config.get_es_schema_group_data().get(
+                    "properties", {}
+                )
+                if group_data_schema:
+                    to_save_group_data = {
+                        k: v
+                        for k, v in oxy_request.group_data.items()
+                        if k in group_data_schema
+                    }
+                else:
+                    to_save_group_data = to_json(oxy_request.group_data)
                 # Store the current conversation trace record
                 await self.mas.es_client.index(
                     Config.get_app_name() + "_trace",
@@ -95,7 +107,7 @@ class BaseAgent(BaseFlow):
                         "request_id": oxy_request.request_id,
                         "trace_id": oxy_request.current_trace_id,
                         "group_id": oxy_request.group_id,
-                        "group_data": to_json(oxy_request.group_data),
+                        "group_data": to_save_group_data,
                         "from_trace_id": oxy_request.from_trace_id,
                         "root_trace_ids": oxy_request.root_trace_ids,
                         "input": to_json(oxy_request.arguments),
@@ -123,6 +135,18 @@ class BaseAgent(BaseFlow):
         if oxy_request.caller_category == "user":
             # Update trace record with the response output
             if self.mas and self.mas.es_client:
+                # save group_data
+                group_data_schema = Config.get_es_schema_group_data().get(
+                    "properties", {}
+                )
+                if group_data_schema:
+                    to_save_group_data = {
+                        k: v
+                        for k, v in oxy_request.group_data.items()
+                        if k in group_data_schema
+                    }
+                else:
+                    to_save_group_data = to_json(oxy_request.group_data)
                 await self.mas.es_client.index(
                     Config.get_app_name() + "_trace",
                     doc_id=oxy_request.current_trace_id,
@@ -130,7 +154,7 @@ class BaseAgent(BaseFlow):
                         "request_id": oxy_request.request_id,
                         "trace_id": oxy_request.current_trace_id,
                         "group_id": oxy_request.group_id,
-                        "group_data": to_json(oxy_request.group_data),
+                        "group_data": to_save_group_data,
                         "from_trace_id": oxy_request.from_trace_id,
                         "root_trace_ids": oxy_request.root_trace_ids,
                         "input": to_json(oxy_request.arguments),
