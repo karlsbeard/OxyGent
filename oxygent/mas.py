@@ -87,7 +87,9 @@ class MAS(BaseModel):
 
     message_prefix: str = Field("oxygent")
 
-    global_data: dict = Field(default_factory=dict)
+    global_data: dict = Field(
+        default_factory=dict, description="public data in the scope of application"
+    )
 
     func_filter: Optional[Callable] = Field(
         lambda x: x, exclude=True, description="filter function"
@@ -616,7 +618,6 @@ class MAS(BaseModel):
             OxyResponse: Fully populated response object.
         """
         try:
-            payload = self.func_filter(payload)
             # distinct attachments
             if "attachments" in payload and payload["attachments"]:
                 atts, remotes = [], []
@@ -958,6 +959,8 @@ class MAS(BaseModel):
             elif request.method == "POST":
                 payload = await request.json()
 
+            payload = self.func_filter(payload)
+
             if "query" not in payload:
                 payload["query"] = ""
 
@@ -993,6 +996,11 @@ class MAS(BaseModel):
 
             if "current_trace_id" not in payload:
                 payload["current_trace_id"] = shortuuid.ShortUUID().random(length=16)
+
+            # fetch headers
+            if "shared_data" not in payload:
+                payload["shared_data"] = dict()
+            payload["shared_data"]["_headers"] = dict(request.headers)
 
             return payload
 

@@ -85,7 +85,7 @@ class StdioMCPClient(BaseMCPClient):
             await self.cleanup()
             raise Exception(f"Server {self.name} error")
 
-    async def call_tool(self, tool_name, arguments):
+    async def call_tool(self, tool_name, arguments, headers=None):
         server_params = await self.get_server_params()
         async with stdio_client(server_params) as streams:
             async with ClientSession(*streams) as session:

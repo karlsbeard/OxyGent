@@ -92,18 +92,21 @@ class OxyRequest(BaseModel):
     callee_category: Optional[str] = Field("", description="")
 
     node_id: Optional[str] = Field("", description="")
-    arguments: dict = Field(default_factory=dict)
 
     is_save_history: bool = Field(True, description="whether history is saved")
 
+    parallel_id: Optional[str] = Field("", description="")
+    parallel_dict: Optional[dict] = Field(default_factory=dict, description="")
+
+    arguments: dict = Field(
+        default_factory=dict, description="public data in the scope of a oxy node"
+    )
     shared_data: dict = Field(
         default_factory=dict, description="public data in the scope of a single request"
     )
     group_data: dict = Field(
         default_factory=dict, description="public data in the scope of a session group"
     )
-    parallel_id: Optional[str] = Field("", description="")
-    parallel_dict: Optional[dict] = Field(default_factory=dict, description="")
 
     @property
     def session_name(self) -> str:  # We use a easy method to create session name
@@ -136,10 +139,10 @@ class OxyRequest(BaseModel):
             if k not in temp_data:
                 fields[k] = copy.deepcopy(fields[k], memo)
 
-        # 创建新实例
+        # create new instance
         new_instance = self.__class__(**fields)
 
-        # 直接赋值共享引用，而不是深拷贝
+        # 直接赋值共享引用
         new_instance.mas = self.mas
         new_instance.shared_data = self.shared_data
         new_instance.group_data = self.group_data
