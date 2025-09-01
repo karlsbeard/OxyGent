@@ -87,6 +87,18 @@ class BaseAgent(BaseFlow):
 
         if oxy_request.caller_category == "user":
             if self.mas and self.mas.es_client:
+                # save shared_data
+                shared_data_schema = Config.get_es_schema_shared_data().get(
+                    "properties", {}
+                )
+                if shared_data_schema:
+                    to_save_shared_data = {
+                        k: v
+                        for k, v in oxy_request.shared_data.items()
+                        if k in shared_data_schema
+                    }
+                else:
+                    to_save_shared_data = to_json(oxy_request.shared_data)
                 # save group_data
                 group_data_schema = Config.get_es_schema_group_data().get(
                     "properties", {}
@@ -106,6 +118,7 @@ class BaseAgent(BaseFlow):
                     body={
                         "request_id": oxy_request.request_id,
                         "trace_id": oxy_request.current_trace_id,
+                        "shared_data": to_save_shared_data,
                         "group_id": oxy_request.group_id,
                         "group_data": to_save_group_data,
                         "from_trace_id": oxy_request.from_trace_id,
@@ -135,6 +148,18 @@ class BaseAgent(BaseFlow):
         if oxy_request.caller_category == "user":
             # Update trace record with the response output
             if self.mas and self.mas.es_client:
+                # save shared_data
+                shared_data_schema = Config.get_es_schema_shared_data().get(
+                    "properties", {}
+                )
+                if shared_data_schema:
+                    to_save_shared_data = {
+                        k: v
+                        for k, v in oxy_request.shared_data.items()
+                        if k in shared_data_schema
+                    }
+                else:
+                    to_save_shared_data = to_json(oxy_request.shared_data)
                 # save group_data
                 group_data_schema = Config.get_es_schema_group_data().get(
                     "properties", {}
@@ -153,6 +178,7 @@ class BaseAgent(BaseFlow):
                     body={
                         "request_id": oxy_request.request_id,
                         "trace_id": oxy_request.current_trace_id,
+                        "shared_data": to_save_shared_data,
                         "group_id": oxy_request.group_id,
                         "group_data": to_save_group_data,
                         "from_trace_id": oxy_request.from_trace_id,

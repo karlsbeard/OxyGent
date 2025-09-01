@@ -264,6 +264,7 @@ class MAS(BaseModel):
                         "group_id": {"type": "keyword"},
                         "group_data": Config.get_es_schema_group_data(),
                         "trace_id": {"type": "keyword"},
+                        "shared_data": Config.get_es_schema_shared_data(),
                         "from_trace_id": {"type": "keyword"},
                         "root_trace_ids": {"type": "keyword"},
                         "input": {"type": "text"},
