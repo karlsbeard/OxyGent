@@ -274,8 +274,9 @@ class MAS(BaseModel):
                             "format": "yyyy-MM-dd HH:mm:ss.SSSSSSSSS",
                             "type": "date",
                         },
-                    }
-                }
+                    },
+                },
+                "settings": Config.get_es_settings_config(),
             },
         )
         # message table
@@ -292,8 +293,9 @@ class MAS(BaseModel):
                                 "format": "yyyy-MM-dd HH:mm:ss.SSSSSSSSS",
                                 "type": "date",
                             },
-                        }
-                    }
+                        },
+                    },
+                    "settings": Config.get_es_settings_config(),
                 },
             )
         # node table
@@ -327,8 +329,9 @@ class MAS(BaseModel):
                             "format": "yyyy-MM-dd HH:mm:ss.SSSSSSSSS",
                             "type": "date",
                         },
-                    }
-                }
+                    },
+                },
+                "settings": Config.get_es_settings_config(),
             },
         )
         # history table
@@ -345,8 +348,9 @@ class MAS(BaseModel):
                             "format": "yyyy-MM-dd HH:mm:ss.SSSSSSSSS",
                             "type": "date",
                         },
-                    }
-                }
+                    },
+                },
+                "settings": Config.get_es_settings_config(),
             },
         )
 

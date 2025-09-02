@@ -536,6 +536,7 @@ class Oxy(BaseModel, ABC):
                 {
                     "type": "answer",
                     "content": oxy_response.output,
+                    "current_trace_id": oxy_request.current_trace_id,
                     "request_id": oxy_request.request_id,
                 }
             )
