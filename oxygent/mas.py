@@ -1033,6 +1033,25 @@ class MAS(BaseModel):
                 self.event_stream(redis_key, current_trace_id, task)
             )
 
+        @app.api_route("/async/chat", methods=["GET", "POST"])
+        async def async_chat(request: Request):
+            payload = await request_to_payload(request)
+            current_trace_id = payload["current_trace_id"]
+
+            logger.info(
+                "SSE connection established.",
+                extra={"trace_id": current_trace_id},
+            )
+            redis_key = f"{self.message_prefix}:{self.name}:{current_trace_id}"
+            task = asyncio.create_task(
+                self.chat_with_agent(payload=payload, send_msg_key=redis_key)
+            )
+            task.add_done_callback(
+                lambda future: self.active_tasks.pop(current_trace_id, None)
+            )
+            self.active_tasks[current_trace_id] = task
+            return WebResponse().to_dict()
+
         async def run_uvicorn():
             """Run the Uvicorn server with the FastAPI app."""
             logger.info("🔗 OxyGent MAS FastAPI Service Initialization")
