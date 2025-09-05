@@ -13,13 +13,18 @@ import traceback
 from abc import ABC, abstractmethod
 from typing import Any, Callable, Optional
 
-import shortuuid
 from pydantic import BaseModel, Field
 
 # from ..mas import MAS
 from ..config import Config
 from ..schemas import OxyRequest, OxyResponse, OxyState
-from ..utils.common_utils import filter_json_types, get_format_time, get_md5, to_json
+from ..utils.common_utils import (
+    filter_json_types,
+    generate_uuid,
+    get_format_time,
+    get_md5,
+    to_json,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -221,7 +226,7 @@ class Oxy(BaseModel, ABC):
         """Pre-process the request before execution."""
         # Initialize the parameters
         if not oxy_request.node_id:
-            oxy_request.node_id = shortuuid.ShortUUID().random(length=16)
+            oxy_request.node_id = generate_uuid()
         oxy_request.callee = self.name
         oxy_request.callee_category = self.category
         oxy_request.call_stack.append(self.name)

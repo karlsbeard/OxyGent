@@ -14,12 +14,13 @@ import copy
 import logging
 import traceback
 from enum import Enum, auto
+from functools import partial
 from typing import Any, List, Optional, Union
 
-import shortuuid
 from pydantic import BaseModel, Field
 
 from ..config import Config
+from ..utils.common_utils import generate_uuid
 
 logger = logging.getLogger(__name__)
 
@@ -55,16 +56,16 @@ class OxyRequest(BaseModel):
 
     # Static
     request_id: str = Field(
-        default_factory=lambda: shortuuid.ShortUUID().random(length=22),
+        default_factory=partial(generate_uuid, length=22),
         description="Client-side id for tracing & resuming requests.",
     )
     group_id: str = Field(
-        default_factory=lambda: shortuuid.ShortUUID().random(length=16),
+        default_factory=generate_uuid,
         description="Static group identifier for trace trees.",
     )
     from_trace_id: Optional[str] = Field("", description="")
     current_trace_id: Optional[str] = Field(
-        default_factory=lambda: shortuuid.ShortUUID().random(length=16), description=""
+        default_factory=generate_uuid, description=""
     )
     reference_trace_id: Optional[str] = Field("", description="")
     restart_node_id: Optional[str] = Field("", description="")
@@ -230,9 +231,9 @@ class OxyRequest(BaseModel):
         """
         oxy_request = self.clone_with(**kwargs)
 
-        oxy_request.node_id = shortuuid.ShortUUID().random(length=16)
+        oxy_request.node_id = generate_uuid()
         if not oxy_request.parallel_id:
-            oxy_request.parallel_id = shortuuid.ShortUUID().random(length=16)
+            oxy_request.parallel_id = generate_uuid()
 
         if oxy_request.parallel_id in self.parallel_dict:
             self.parallel_dict[oxy_request.parallel_id]["parallel_node_ids"].append(

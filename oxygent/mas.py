@@ -18,7 +18,6 @@ NOTE: This module contains the following parts:
 # from __future__ import annotations
 
 import asyncio
-import datetime
 import json
 import os
 import traceback
@@ -26,7 +25,6 @@ from collections import OrderedDict
 from typing import Callable, Optional
 
 import msgpack
-import shortuuid
 from elasticsearch import AsyncElasticsearch
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -47,6 +45,8 @@ from .routes import router
 from .schemas import OxyRequest, OxyResponse, WebResponse
 from .utils.common_utils import (
     _compose_query_parts,
+    generate_uuid,
+    get_format_time,
     msgpack_preprocess,
     print_tree,
     to_json,
@@ -286,6 +286,7 @@ class MAS(BaseModel):
                 {
                     "mappings": {
                         "properties": {
+                            "message_id": {"type": "keyword"},
                             "trace_id": {"type": "keyword"},
                             "message": {"type": "text"},
                             "message_type": {"type": "keyword"},
@@ -585,18 +586,19 @@ class MAS(BaseModel):
             parts = redis_key.split(":")
             current_trace_id = parts[-1] if len(parts) >= 3 else ""
 
-            message_doc = {
-                "trace_id": current_trace_id,
-                "message": to_json(message),  # Convert message to JSON string
-                "message_type": message.get("type", "")
-                if isinstance(message, dict)
-                else "",
-                "create_time": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f"),
-            }
-
             # Insert into Elasticsearch
+            message_id = generate_uuid()
+            message_type = message.get("type", "") if isinstance(message, dict) else ""
             await self.es_client.index(
-                index=Config.get_app_name() + "_message", body=message_doc
+                Config.get_app_name() + "_message",
+                doc_id=message_id,
+                body={
+                    "message_id": message_id,
+                    "trace_id": current_trace_id,
+                    "message": to_json(message),
+                    "message_type": message_type,
+                    "create_time": get_format_time(),
+                },
             )
         await self.redis_client.lpush(redis_key, bytes_msg)
 
@@ -1000,7 +1002,7 @@ class MAS(BaseModel):
                 )
 
             if "current_trace_id" not in payload:
-                payload["current_trace_id"] = shortuuid.ShortUUID().random(length=16)
+                payload["current_trace_id"] = generate_uuid()
 
             # fetch headers
             if "shared_data" not in payload:
