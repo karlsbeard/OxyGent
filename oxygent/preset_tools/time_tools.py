@@ -15,7 +15,8 @@ def get_current_time(
 
     from pytz import timezone as pytimezone
 
-    if isinstance(timezone, fields.FieldInfo):
+    # 系统级修复后，这里的检查可以简化
+    if timezone is None:
         timezone = "Asia/Shanghai"
 
     tz = pytimezone(timezone)
@@ -36,6 +37,14 @@ def convert_time(
     from datetime import datetime
 
     import pytz
+
+    # 系统级修复后，处理可能的 None 值
+    if source_timezone is None:
+        source_timezone = "Asia/Shanghai"
+    if time is None:
+        time = "00:00"
+    if target_timezone is None:
+        target_timezone = "Asia/Shanghai"
 
     dt = datetime.strptime(time, "%H:%M")
     # Create timezone objects for the source and target timezones
