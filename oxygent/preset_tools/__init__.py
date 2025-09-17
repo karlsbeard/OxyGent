@@ -4,7 +4,8 @@ import os
 
 
 # List of tool modules to import
-tool_modules = ["math_tools", "file_tools", "time_tools", "http_tools", "string_tools", "system_tools"]
+tool_modules = ["math_tools", "file_tools", "time_tools", "http_tools", "string_tools", "system_tools", "shell_tools",
+                "python_tools", "baidu_search_tools"]
 
 __all__ = []
 
