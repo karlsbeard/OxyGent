@@ -4,6 +4,10 @@ from oxygent import MAS, Config, oxy, preset_tools
 
 Config.set_agent_llm_model("default_llm")
 
+os.environ["DEFAULT_LLM_API_KEY"] = "DEFAULT_LLM_API_KEY"
+os.environ["DEFAULT_LLM_BASE_URL"] = "DEFAULT_LLM_BASE_URL"
+os.environ["DEFAULT_LLM_MODEL_NAME"] = "DEFAULT_LLM_MODEL_NAME"
+
 
 oxy_space = [
     oxy.HttpLLM(
