@@ -59,7 +59,9 @@ class Config:
             "max_tokens": 4096,
             "top_p": 1,
         },
-        "cache": {"save_dir": "./cache_dir"},
+        "cache": {
+            "save_dir": "./cache_dir",
+        },
         "message": {
             "is_send_tool_call": True,
             "is_send_observation": True,
@@ -71,7 +73,14 @@ class Config:
         },
         "vearch": {},
         "es": {},
-        "es_schema": {"shared_data": {}},
+        "es_schema": {
+            "shared_data": {"type": "text"},
+            "group_data": {"type": "text"},
+        },
+        "es_settings": {
+            "number_of_shards": 1,
+            "number_of_replicas": 1,
+        },
         "redis": {},
         "redis_param": {
             "expire_time": 86400,  # 24 hours 60 * 60 * 24
@@ -93,6 +102,10 @@ class Config:
             },
             "short_memory_size": 10,
             "welcome_message": "Hi, I’m OxyGent. How can I assist you?",
+        },
+        "tool": {
+            "mcp_is_keep_alive": True,
+            "is_concurrent_init": True,
         },
     }
 
@@ -389,7 +402,31 @@ class Config:
 
     @classmethod
     def get_es_schema_shared_data(cls) -> dict:
-        return cls.get_module_config("es_schema", "shared_data")
+        shared_data_schema = cls.get_module_config("es_schema", "shared_data")
+        if "properties" in shared_data_schema and "type" in shared_data_schema:
+            del shared_data_schema["type"]
+        return shared_data_schema
+
+    @classmethod
+    def set_es_schema_group_data(cls, es_schema_config):
+        return cls.set_module_config("es_schema", "group_data", es_schema_config)
+
+    @classmethod
+    def get_es_schema_group_data(cls) -> dict:
+        group_data_schema = cls.get_module_config("es_schema", "group_data")
+        if "properties" in group_data_schema and "type" in group_data_schema:
+            del group_data_schema["type"]
+        return group_data_schema
+
+    """ es_settings """
+
+    @classmethod
+    def set_es_settings_config(cls, es_settings_config):
+        cls.set_module_config("es_settings", es_settings_config)
+
+    @classmethod
+    def get_es_settings_config(cls) -> dict:
+        return cls.get_module_config("es_settings")
 
     """ vearch """
 
@@ -414,6 +451,8 @@ class Config:
     @classmethod
     def get_redis_config(cls):
         return cls.get_module_config("redis")
+
+    """ redis_param """
 
     @classmethod
     def set_redis_expire_time(cls, expire_time):
@@ -538,3 +577,29 @@ class Config:
     @classmethod
     def get_agent_welcome_message(cls):
         return cls.get_module_config("agent", "welcome_message")
+
+    """ tool """
+
+    @classmethod
+    def set_tool_config(cls, tool_config):
+        cls.set_module_config("tool", tool_config)
+
+    @classmethod
+    def get_tool_config(cls):
+        return cls.get_module_config("tool")
+
+    @classmethod
+    def set_tool_mcp_is_keep_alive(cls, mcp_is_keep_alive):
+        cls.set_module_config("tool", "mcp_is_keep_alive", mcp_is_keep_alive)
+
+    @classmethod
+    def get_tool_mcp_is_keep_alive(cls):
+        return cls.get_module_config("tool", "mcp_is_keep_alive")
+
+    @classmethod
+    def set_tool_is_concurrent_init(cls, is_concurrent_init):
+        cls.set_module_config("tool", "is_concurrent_init", is_concurrent_init)
+
+    @classmethod
+    def get_tool_is_concurrent_init(cls):
+        return cls.get_module_config("tool", "is_concurrent_init")
