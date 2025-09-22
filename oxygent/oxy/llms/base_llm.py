@@ -12,6 +12,7 @@ from typing import Optional
 
 from pydantic import Field
 
+from ...config import Config
 from ...schemas import OxyRequest, OxyResponse
 from ...utils.common_utils import (
     extract_first_json,
@@ -49,7 +50,8 @@ class BaseLLM(Oxy):
 
     llm_params: dict = Field(default_factory=dict)
     is_send_think: bool = Field(
-        default=True, description="Whether to send think messages to the frontend."
+        default_factory=Config.get_message_is_send_think,
+        description="Whether to send think messages to the frontend.",
     )
     friendly_error_text: Optional[str] = Field(
         default="Sorry, I seem to have encountered a problem. Please try again.",

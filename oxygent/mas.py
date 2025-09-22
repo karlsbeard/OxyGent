@@ -879,14 +879,16 @@ class MAS(BaseModel):
             allow_headers=["*"],
         )
 
+        app.include_router(router)
+        for app_router in self.routers:
+            app.include_router(app_router)
+
         web_src = "web"
         with importlib.resources.as_file(
             importlib.resources.files("oxygent") / web_src
         ) as web_path:
             app.mount("/web", StaticFiles(directory=str(web_path)), name="web")
-        app.include_router(router)
-        for app_router in self.routers:
-            app.include_router(app_router)
+
         """
         For all of the nodes we fill the following information:
         - path: The path from the root node (master agent) to the currrent node.
