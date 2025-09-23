@@ -94,8 +94,12 @@ class MAS(BaseModel):
     func_filter: Optional[Callable] = Field(
         lambda x: x, exclude=True, description="filter function"
     )
+    func_interceptor: Optional[Callable] = Field(
+        lambda x: None, exclude=True, description="interceptor function"
+    )
 
     routers: list = Field(default_factory=list)
+    middlewares: list = Field(default_factory=list)
 
     def __init__(self, **kwargs):
         """Construct a new :class:`MAS`.
@@ -879,6 +883,9 @@ class MAS(BaseModel):
             allow_headers=["*"],
         )
 
+        for app_middleware in self.middlewares:
+            app.add_middleware(app_middleware)
+
         app.include_router(router)
         for app_router in self.routers:
             app.include_router(app_router)
@@ -1020,12 +1027,20 @@ class MAS(BaseModel):
         @app.api_route("/chat", methods=["GET", "POST"])
         async def chat(request: Request):
             payload = await request_to_payload(request)
+            # Apply request interceptor if configured
+            intercepted_response = self.func_interceptor(payload)
+            if intercepted_response is not None:
+                return intercepted_response
             oxy_response = await self.chat_with_agent(payload=payload)
             return oxy_response.output
 
         @app.api_route("/sse/chat", methods=["GET", "POST"])
         async def sse_chat(request: Request):
             payload = await request_to_payload(request)
+            # Apply request interceptor if configured
+            intercepted_response = self.func_interceptor(payload)
+            if intercepted_response is not None:
+                return intercepted_response
             current_trace_id = payload["current_trace_id"]
 
             logger.info(
@@ -1044,6 +1059,10 @@ class MAS(BaseModel):
         @app.api_route("/async/chat", methods=["GET", "POST"])
         async def async_chat(request: Request):
             payload = await request_to_payload(request)
+            # Apply request interceptor if configured
+            intercepted_response = self.func_interceptor(payload)
+            if intercepted_response is not None:
+                return intercepted_response
             current_trace_id = payload["current_trace_id"]
 
             logger.info(
