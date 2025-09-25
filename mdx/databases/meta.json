@@ -1,0 +1,18 @@
+{
+  "pages": [
+    "index",
+    "---Foundation---",
+    "base-db",
+    "---Elasticsearch Services---",
+    "base-es",
+    "local-es", 
+    "jes-es",
+    "---Redis Services---",
+    "base-redis",
+    "local-redis",
+    "jimdb-ap-redis",
+    "---Vector Database Services---",
+    "base-vector-db",
+    "vearch-db"
+  ]
+}

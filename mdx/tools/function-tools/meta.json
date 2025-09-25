@@ -1,0 +1,17 @@
+{
+  "title": "Function Tools",
+  "pages": [
+    {
+      "title": "Overview",
+      "url": "/tools/function-tools"
+    },
+    {
+      "title": "FunctionHub",
+      "url": "/tools/function-tools/function-hub"
+    },
+    {
+      "title": "FunctionTool",
+      "url": "/tools/function-tools/function-tool"
+    }
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "pages": [
+    "---Core Agents---",
+    "base-agent",
+    "chat-agent",
+    "---Specialized Agents---", 
+    "react-agent",
+    "workflow-agent",
+    "local-agent",
+    "remote-agent",
+    "---Advanced Agents---",
+    "parallel-agent",
+    "sse-oxy-agent"
+  ]
+}

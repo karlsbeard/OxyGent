@@ -1,0 +1,366 @@
+---
+title: BaseEs
+description: Abstract base class defining the interface contract for all Elasticsearch database service implementations
+---
+
+# BaseEs
+
+The `BaseEs` class is an abstract base class that defines the essential interface contract for all Elasticsearch database service implementations in the OxyGent framework. It inherits from `BaseDB` to leverage automatic retry functionality while establishing a standardized API for Elasticsearch operations.
+
+## Overview
+
+`BaseEs` serves as the foundation for all Elasticsearch implementations by:
+
+- **Interface Definition**: Establishing a consistent API for all ES operations
+- **Retry Integration**: Inheriting robust retry mechanisms from BaseDB
+- **Type Safety**: Providing clear method signatures for implementation guidance
+- **Abstraction Layer**: Separating the interface from specific implementation details
+
+## Class Definition
+
+```python
+from abc import ABC, abstractmethod
+from oxygent.databases.base_db import BaseDB
+
+class BaseEs(BaseDB, ABC):
+    # All methods are abstract and must be implemented by subclasses
+    pass
+```
+
+## Inheritance Hierarchy
+
+```
+BaseDB (Retry mechanism)
+  ↓
+BaseEs (ES interface contract)
+  ↓
+├── LocalEs (File-based implementation)
+└── JesEs (Real Elasticsearch implementation)
+```
+
+## Abstract Methods
+
+All methods in `BaseEs` are abstract and **must** be implemented by subclasses. Each method automatically benefits from the retry mechanism inherited from `BaseDB`.
+
+### async create_index(index_name, body)
+
+Creates a new index in Elasticsearch with the specified configuration.
+
+**Parameters**:
+- `index_name` (str): Name of the index to create
+- `body` (dict): Index configuration including mappings, settings, aliases, etc.
+
+**Returns**: Result of the index creation operation
+
+**Implementation Requirements**:
+- Must validate input parameters
+- Should handle index already exists scenarios appropriately
+- Must support full Elasticsearch index configuration options
+
+```python
+# Example body structure:
+body = {
+    "settings": {
+        "number_of_shards": 1,
+        "number_of_replicas": 0
+    },
+    "mappings": {
+        "properties": {
+            "title": {"type": "text"},
+            "timestamp": {"type": "date"},
+            "user_id": {"type": "keyword"}
+        }
+    }
+}
+```
+
+### async index(index_name, doc_id, body)
+
+Indexes a document in Elasticsearch (create or replace operation).
+
+**Parameters**:
+- `index_name` (str): Name of the index to store the document
+- `doc_id` (str): Unique identifier for the document
+- `body` (dict): Document content to be indexed
+
+**Returns**: Result of the indexing operation including document ID and status
+
+**Implementation Requirements**:
+- Must handle document creation and replacement
+- Should return consistent response format across implementations
+- Must validate document structure if required
+
+```python
+# Example usage:
+result = await es.index(
+    "user_logs", 
+    "user_123_2024", 
+    {
+        "user_id": "123",
+        "action": "login",
+        "timestamp": "2024-09-01T10:00:00Z",
+        "ip_address": "192.168.1.1"
+    }
+)
+```
+
+### async update(index_name, doc_id, body)
+
+Updates an existing document in Elasticsearch.
+
+**Parameters**:
+- `index_name` (str): Name of the index containing the document
+- `doc_id` (str): Unique identifier of the document to update
+- `body` (dict): Partial document content with fields to update
+
+**Returns**: Result of the update operation
+
+**Implementation Requirements**:
+- Must handle partial document updates
+- Should support upsert operations if needed
+- Must handle document not found scenarios
+
+```python
+# Example usage:
+result = await es.update(
+    "user_logs",
+    "user_123_2024",
+    {
+        "last_seen": "2024-09-01T10:30:00Z",
+        "session_count": 5
+    }
+)
+```
+
+### async search(index_name, body)
+
+Executes a search query against an Elasticsearch index.
+
+**Parameters**:
+- `index_name` (str): Name of the index to search
+- `body` (dict): Search query body containing query DSL, filters, aggregations, sorting, etc.
+
+**Returns**: Search results matching the query criteria
+
+**Implementation Requirements**:
+- Must support the full Elasticsearch Query DSL
+- Should handle pagination, sorting, and aggregations
+- Must return results in standard Elasticsearch format
+
+```python
+# Example query body:
+search_body = {
+    "query": {
+        "bool": {
+            "must": [
+                {"term": {"user_id": "123"}},
+                {"range": {"timestamp": {"gte": "2024-09-01"}}}
+            ]
+        }
+    },
+    "sort": [{"timestamp": {"order": "desc"}}],
+    "size": 50
+}
+
+results = await es.search("user_logs", search_body)
+```
+
+### async exists(index_name, doc_id)
+
+Checks if a document exists in the specified index.
+
+**Parameters**:
+- `index_name` (str): Name of the index to check
+- `doc_id` (str): Document ID to verify existence
+
+**Returns**: Boolean indicating whether the document exists
+
+**Implementation Requirements**:
+- Must return True if document exists, False otherwise
+- Should be efficient (avoid fetching full document)
+- Must handle index not found scenarios gracefully
+
+```python
+# Example usage:
+doc_exists = await es.exists("user_logs", "user_123_2024")
+if doc_exists:
+    await es.update("user_logs", "user_123_2024", updates)
+else:
+    await es.index("user_logs", "user_123_2024", new_document)
+```
+
+### async close()
+
+Closes the Elasticsearch client connection and cleans up resources.
+
+**Parameters**: None
+
+**Returns**: Operation result (implementation dependent)
+
+**Implementation Requirements**:
+- Must properly close all active connections
+- Should clean up connection pools and resources
+- Must be safe to call multiple times
+
+```python
+# Example usage:
+try:
+    # Perform ES operations
+    results = await es.search("index", query)
+finally:
+    await es.close()  # Ensure cleanup
+```
+
+## Implementation Examples
+
+### Basic Implementation Pattern
+
+```python
+from oxygent.databases.db_es.base_es import BaseEs
+
+class CustomEs(BaseEs):
+    def __init__(self, connection_params):
+        self.client = create_es_client(connection_params)
+    
+    async def create_index(self, index_name, body):
+        # Implement index creation logic
+        return await self.client.indices.create(
+            index=index_name, 
+            body=body
+        )
+    
+    async def index(self, index_name, doc_id, body):
+        # Implement document indexing
+        return await self.client.index(
+            index=index_name,
+            id=doc_id,
+            body=body
+        )
+    
+    # ... implement other abstract methods
+```
+
+### Error Handling Pattern
+
+```python
+class RobustEs(BaseEs):
+    async def search(self, index_name, body):
+        try:
+            # The retry mechanism from BaseDB will handle transient failures
+            return await self.client.search(index=index_name, body=body)
+        except Exception as e:
+            # Handle specific ES errors
+            if "index_not_found" in str(e):
+                return {"hits": {"hits": []}}  # Return empty results
+            raise  # Re-raise if not a known recoverable error
+```
+
+## Automatic Retry Behavior
+
+Since `BaseEs` inherits from `BaseDB`, all implemented methods automatically receive retry functionality:
+
+- **Automatic Decoration**: All public methods get retry logic applied
+- **Transient Error Recovery**: Network issues and connection problems are automatically retried
+- **Configurable Policy**: Default is 1 retry with 0.1 second delay
+- **Graceful Failure**: Returns None if all retries are exhausted
+
+```python
+# This happens automatically:
+class LocalEs(BaseEs):
+    async def search(self, index_name, body):
+        # This method is automatically wrapped with retry logic
+        # No manual retry handling needed
+        return self._perform_search(index_name, body)
+```
+
+## Implementation Guidelines
+
+### 1. Consistent Response Formats
+
+Ensure all implementations return consistent response formats:
+
+```python
+# Index operation response
+{
+    "_id": "doc_123",
+    "result": "created" | "updated",
+    "_index": "my_index"
+}
+
+# Search response
+{
+    "hits": {
+        "hits": [
+            {"_id": "doc_1", "_source": {...}},
+            {"_id": "doc_2", "_source": {...}}
+        ]
+    }
+}
+```
+
+### 2. Parameter Validation
+
+Implement robust parameter validation in all methods:
+
+```python
+async def create_index(self, index_name, body):
+    if not index_name or not index_name.strip():
+        raise ValueError("Index name cannot be empty")
+    if not body:
+        raise ValueError("Index configuration cannot be empty")
+    
+    # Proceed with implementation
+```
+
+### 3. Resource Management
+
+Properly manage connections and resources:
+
+```python
+class ManagedEs(BaseEs):
+    def __init__(self):
+        self.client = None
+        self.connection_pool = None
+    
+    async def _ensure_connected(self):
+        if not self.client:
+            self.client = await create_client()
+    
+    async def close(self):
+        if self.client:
+            await self.client.close()
+            self.client = None
+```
+
+## Concrete Implementations
+
+The OxyGent framework provides two main implementations of `BaseEs`:
+
+### LocalEs
+- **File-based**: Stores data as JSON files on the filesystem
+- **Development-friendly**: No external dependencies required  
+- **Cross-platform**: Works on Windows, macOS, and Linux
+- **UTF-8 safe**: Handles encoding issues gracefully
+
+### JesEs  
+- **Production-ready**: Connects to real Elasticsearch clusters
+- **Full-featured**: Supports complete Elasticsearch functionality
+- **Scalable**: Handles large datasets and complex queries
+- **Configurable**: Supports authentication, connection pooling, and timeouts
+
+## Usage in OxyGent Architecture
+
+`BaseEs` implementations are commonly used for:
+
+- **Trace Storage**: Storing request/response traces for debugging
+- **Conversation History**: Persisting chat conversations and context
+- **Log Aggregation**: Collecting and searching application logs  
+- **Analytics Data**: Storing metrics and performance data
+- **Configuration Storage**: Persisting dynamic configuration data
+
+## See Also
+
+- [LocalEs Implementation](./local-es) - File-based Elasticsearch simulation
+- [JesEs Implementation](./jes-es) - Production Elasticsearch client
+- [BaseDB](./base-db) - Parent class providing retry mechanisms
+- [Database Services Overview](./index) - Complete database services documentation

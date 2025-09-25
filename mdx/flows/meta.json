@@ -1,0 +1,11 @@
+{
+  "pages": [
+    "flows-index",
+    "---Core Flows---",
+    "workflow-flow",
+    "parallel-flow",
+    "---Advanced Flows---", 
+    "plan-and-solve-flow",
+    "reflexion-flow"
+  ]
+}

@@ -1,0 +1,531 @@
+---
+title: LLM Pydantic Parser
+description: Advanced output parsing utility for structured data extraction from LLM responses using Pydantic models
+---
+
+# LLM Pydantic Parser
+
+The `llm_pydantic_parser` module provides sophisticated utilities for parsing and validating Large Language Model (LLM) responses into structured Python objects using Pydantic models. This is essential for ensuring reliable data extraction from natural language model outputs.
+
+## Overview
+
+This module enables:
+
+- **Structured Output Parsing**: Convert LLM text responses to typed Python objects
+- **Schema-Driven Formatting**: Generate prompts with JSON schema specifications
+- **Automatic Validation**: Leverage Pydantic's validation capabilities for data integrity
+- **Error Handling**: Robust parsing with meaningful error messages
+- **Flexible Configuration**: Customizable parsing templates and schema exclusions
+
+## Import Statement
+
+```python
+from oxygent.utils.llm_pydantic_parser import PydanticOutputParser
+from pydantic import BaseModel
+```
+
+## Core Classes
+
+### PydanticOutputParser
+
+A comprehensive parser class that handles the complete lifecycle of structured output processing from LLMs.
+
+**Initialization:**
+```python
+parser = PydanticOutputParser(
+    output_cls=MyDataModel,
+    excluded_schema_keys_from_format=["title", "description"],
+    pydantic_format_tmpl=custom_template
+)
+```
+
+**Parameters:**
+- `output_cls` (Type[BaseModel]): Pydantic model class defining the expected output structure
+- `excluded_schema_keys_from_format` (Optional[List], optional): Schema keys to exclude from prompt formatting
+- `pydantic_format_tmpl` (str, optional): Custom formatting template for prompts
+
+## Properties and Methods
+
+### Properties
+
+#### output_cls
+Returns the Pydantic model class being used for parsing.
+
+**Returns:**
+- `Type[BaseModel]`: The configured output class
+
+**Example:**
+```python
+parser = PydanticOutputParser(output_cls=UserProfile)
+model_class = parser.output_cls
+print(model_class.__name__)  # Output: UserProfile
+```
+
+#### format_string
+Returns the formatted instruction string for LLM prompts with JSON escaping.
+
+**Returns:**
+- `str`: Formatted prompt instruction with escaped JSON
+
+**Example:**
+```python
+parser = PydanticOutputParser(output_cls=TaskResult)
+instructions = parser.format_string
+print(instructions)
+# Output: Contains escaped JSON schema instructions
+```
+
+### Methods
+
+#### get_format_string(escape_json: bool = True) -> str
+
+Generates formatting instructions for LLM prompts with optional JSON escaping.
+
+**Parameters:**
+- `escape_json` (bool, optional): Whether to escape JSON braces for prompt templates. Defaults to `True`
+
+**Returns:**
+- `str`: Formatted instruction string
+
+**Example:**
+```python
+# For prompt templates (escaped)
+escaped_instructions = parser.get_format_string(escape_json=True)
+
+# For direct use (unescaped)  
+direct_instructions = parser.get_format_string(escape_json=False)
+```
+
+#### parse(text: str) -> Any
+
+Parses and validates LLM response text into a structured Pydantic model instance.
+
+**Parameters:**
+- `text` (str): Raw text response from LLM containing JSON data
+
+**Returns:**
+- `Any`: Validated Pydantic model instance
+
+**Raises:**
+- `ValueError`: If JSON extraction fails or validation errors occur
+- `ValidationError`: If the extracted data doesn't match the schema
+
+**Example:**
+```python
+llm_response = '''
+The analysis is complete. Here's the result:
+{"name": "John Doe", "age": 30, "email": "john@example.com"}
+'''
+
+try:
+    parsed_result = parser.parse(llm_response)
+    print(f"Name: {parsed_result.name}, Age: {parsed_result.age}")
+except ValueError as e:
+    print(f"Parsing error: {e}")
+```
+
+#### format(query: str) -> str
+
+Enhances a user query with structured output formatting instructions.
+
+**Parameters:**
+- `query` (str): Original user query or prompt
+
+**Returns:**
+- `str`: Enhanced query with formatting instructions appended
+
+**Example:**
+```python
+user_query = "Extract user information from this text"
+enhanced_query = parser.format(user_query)
+# Result: Original query + JSON schema instructions
+```
+
+## Template Configuration
+
+### Default Template
+
+The module includes a predefined template for generating JSON schema instructions:
+
+```python
+PYDANTIC_FORMAT_TMPL = """
+Here's a JSON schema to follow:
+{schema}
+
+Output a valid JSON object but do not repeat the schema.
+Omit any markdown formatting.
+Do not include any other text than the JSON object.
+Do not include any preamble or explanation.
+Do not repeat the schema.
+"""
+```
+
+### Custom Templates
+
+You can provide custom formatting templates for specific use cases:
+
+**Example:**
+```python
+custom_template = """
+Please format your response as JSON following this schema:
+{schema}
+
+Important: Only return the JSON data, no additional text.
+"""
+
+parser = PydanticOutputParser(
+    output_cls=MyModel,
+    pydantic_format_tmpl=custom_template
+)
+```
+
+## Practical Examples
+
+### Basic User Profile Extraction
+
+```python
+from pydantic import BaseModel, Field
+from typing import Optional
+
+class UserProfile(BaseModel):
+    name: str = Field(description="Full name of the user")
+    age: int = Field(description="Age in years", ge=0, le=120)
+    email: str = Field(description="Email address")
+    occupation: Optional[str] = Field(description="Job title or profession")
+
+# Create parser
+parser = PydanticOutputParser(output_cls=UserProfile)
+
+# Generate prompt with schema
+query = "Extract user information from: John Smith, 35 years old, works as a software engineer, email: john@tech.com"
+enhanced_prompt = parser.format(query)
+
+# Parse LLM response
+llm_response = '''
+{
+    "name": "John Smith",
+    "age": 35,
+    "email": "john@tech.com", 
+    "occupation": "Software Engineer"
+}
+'''
+
+user_profile = parser.parse(llm_response)
+print(f"Parsed: {user_profile.name}, {user_profile.age} years old")
+```
+
+### Complex Data Extraction
+
+```python
+from pydantic import BaseModel
+from typing import List, Dict, Any
+from datetime import datetime
+
+class TaskAnalysis(BaseModel):
+    task_id: str
+    title: str
+    priority: int = Field(ge=1, le=5)
+    tags: List[str]
+    metadata: Dict[str, Any]
+    estimated_hours: float
+    
+class ProjectSummary(BaseModel):
+    project_name: str
+    total_tasks: int
+    tasks: List[TaskAnalysis]
+    completion_rate: float = Field(ge=0.0, le=1.0)
+
+# Create parser with schema exclusions
+parser = PydanticOutputParser(
+    output_cls=ProjectSummary,
+    excluded_schema_keys_from_format=["title", "description"]
+)
+
+# Process complex project data
+project_text = """
+Project Alpha has 3 tasks:
+1. Database migration (ID: DB001, high priority, 8 hours)
+2. API development (ID: API002, medium priority, 12 hours) 
+3. Testing (ID: TEST003, low priority, 4 hours)
+Overall completion: 60%
+"""
+
+enhanced_query = parser.format(f"Extract project information: {project_text}")
+# Send enhanced_query to LLM and parse response
+```
+
+### Error Handling and Validation
+
+```python
+class ProductInfo(BaseModel):
+    name: str = Field(min_length=1)
+    price: float = Field(gt=0)
+    category: str
+    in_stock: bool
+
+parser = PydanticOutputParser(output_cls=ProductInfo)
+
+def safe_parse_product(llm_response: str) -> Optional[ProductInfo]:
+    """Safely parse product information with comprehensive error handling."""
+    try:
+        product = parser.parse(llm_response)
+        print(f"Successfully parsed: {product.name}")
+        return product
+        
+    except ValueError as e:
+        print(f"JSON extraction failed: {e}")
+        return None
+        
+    except ValidationError as e:
+        print(f"Validation failed: {e}")
+        # Handle specific validation errors
+        for error in e.errors():
+            field = error['loc'][0] if error['loc'] else 'unknown'
+            message = error['msg']
+            print(f"  - {field}: {message}")
+        return None
+
+# Test with invalid data
+invalid_response = '{"name": "", "price": -10, "category": "electronics"}'
+result = safe_parse_product(invalid_response)  # Will handle validation errors
+```
+
+## Advanced Usage Patterns
+
+### Multi-Model Parser Factory
+
+```python
+class ParserFactory:
+    """Factory for creating specialized parsers."""
+    
+    @staticmethod
+    def create_user_parser():
+        return PydanticOutputParser(output_cls=UserProfile)
+    
+    @staticmethod
+    def create_task_parser():
+        return PydanticOutputParser(
+            output_cls=TaskAnalysis,
+            excluded_schema_keys_from_format=["examples"]
+        )
+    
+    @staticmethod  
+    def create_project_parser():
+        custom_template = """
+        Extract project data as JSON:
+        {schema}
+        
+        Format: Pure JSON only, no markdown.
+        """
+        return PydanticOutputParser(
+            output_cls=ProjectSummary,
+            pydantic_format_tmpl=custom_template
+        )
+
+# Usage
+user_parser = ParserFactory.create_user_parser()
+task_parser = ParserFactory.create_task_parser()
+```
+
+### Batch Processing
+
+```python
+def batch_parse_responses(parser: PydanticOutputParser, responses: List[str]) -> List[Any]:
+    """Process multiple LLM responses in batch."""
+    results = []
+    errors = []
+    
+    for i, response in enumerate(responses):
+        try:
+            parsed = parser.parse(response)
+            results.append(parsed)
+        except Exception as e:
+            errors.append((i, str(e)))
+            results.append(None)
+    
+    if errors:
+        print(f"Parsing errors in {len(errors)} responses:")
+        for idx, error in errors:
+            print(f"  Response {idx}: {error}")
+    
+    return results
+
+# Process multiple responses
+responses = [llm_response_1, llm_response_2, llm_response_3]
+parsed_results = batch_parse_responses(parser, responses)
+```
+
+### Schema Validation with Custom Rules
+
+```python
+from pydantic import validator
+
+class AdvancedUserProfile(BaseModel):
+    name: str
+    email: str
+    age: int
+    phone: Optional[str] = None
+    
+    @validator('email')
+    def validate_email(cls, v):
+        if '@' not in v:
+            raise ValueError('Invalid email format')
+        return v.lower()
+    
+    @validator('age')
+    def validate_age(cls, v):
+        if v < 0 or v > 150:
+            raise ValueError('Age must be between 0 and 150')
+        return v
+
+# Parser with custom validation
+advanced_parser = PydanticOutputParser(output_cls=AdvancedUserProfile)
+
+# Test validation
+response_with_invalid_email = '''
+{
+    "name": "Test User",
+    "email": "invalid-email",
+    "age": 25
+}
+'''
+
+try:
+    result = advanced_parser.parse(response_with_invalid_email)
+except ValidationError as e:
+    print("Custom validation caught the error:", e)
+```
+
+## Integration with LLM Clients
+
+### OpenAI Integration Example
+
+```python
+import openai
+from pydantic import BaseModel
+
+class SentimentAnalysis(BaseModel):
+    text: str
+    sentiment: str = Field(description="positive, negative, or neutral")
+    confidence: float = Field(description="Confidence score 0-1", ge=0, le=1)
+    keywords: List[str] = Field(description="Key emotional words")
+
+async def analyze_sentiment_structured(text: str) -> SentimentAnalysis:
+    """Analyze sentiment with structured output."""
+    parser = PydanticOutputParser(output_cls=SentimentAnalysis)
+    
+    # Create structured prompt
+    base_query = f"Analyze the sentiment of this text: {text}"
+    structured_prompt = parser.format(base_query)
+    
+    # Call LLM
+    response = await openai.ChatCompletion.acreate(
+        model="gpt-3.5-turbo",
+        messages=[{"role": "user", "content": structured_prompt}]
+    )
+    
+    # Parse structured response
+    llm_output = response.choices[0].message.content
+    return parser.parse(llm_output)
+
+# Usage
+sentiment_result = await analyze_sentiment_structured("I love this product!")
+print(f"Sentiment: {sentiment_result.sentiment} (confidence: {sentiment_result.confidence})")
+```
+
+### Streaming Response Parsing
+
+```python
+def parse_streaming_response(parser: PydanticOutputParser, response_stream):
+    """Parse structured data from streaming LLM responses."""
+    accumulated_text = ""
+    
+    for chunk in response_stream:
+        accumulated_text += chunk
+        
+        # Try to parse when we have what looks like complete JSON
+        if accumulated_text.count('{') == accumulated_text.count('}') and accumulated_text.count('{') > 0:
+            try:
+                return parser.parse(accumulated_text)
+            except ValueError:
+                continue  # Keep accumulating
+    
+    # Final attempt
+    return parser.parse(accumulated_text)
+```
+
+## Error Handling Strategies
+
+### Comprehensive Error Recovery
+
+```python
+class RobustParser:
+    """Parser with advanced error recovery capabilities."""
+    
+    def __init__(self, parser: PydanticOutputParser):
+        self.parser = parser
+        self.fallback_attempts = 3
+    
+    def parse_with_fallbacks(self, text: str, fallback_queries: List[str] = None):
+        """Parse with multiple fallback strategies."""
+        
+        # Primary parsing attempt
+        try:
+            return self.parser.parse(text)
+        except ValueError as e:
+            print(f"Primary parsing failed: {e}")
+        
+        # Attempt to clean the text
+        cleaned_text = self._clean_json_text(text)
+        try:
+            return self.parser.parse(cleaned_text)
+        except ValueError:
+            pass
+        
+        # Try fallback queries if provided
+        if fallback_queries:
+            print("Attempting fallback parsing strategies...")
+            # Implementation for fallback queries
+        
+        raise ValueError("All parsing attempts failed")
+    
+    def _clean_json_text(self, text: str) -> str:
+        """Clean common JSON formatting issues."""
+        import re
+        
+        # Remove markdown code blocks
+        text = re.sub(r'```json\s*', '', text)
+        text = re.sub(r'```\s*', '', text)
+        
+        # Remove common prefixes
+        text = re.sub(r'^[^{]*', '', text)
+        text = re.sub(r'[^}]*$', '', text)
+        
+        return text.strip()
+```
+
+## Best Practices
+
+1. **Schema Design**: Design Pydantic models with clear field descriptions and appropriate validation
+2. **Error Handling**: Always wrap parsing operations in try-catch blocks
+3. **Template Customization**: Customize formatting templates for specific LLM providers
+4. **Validation**: Use Pydantic validators for complex business rules
+5. **Testing**: Test parsers with various malformed inputs to ensure robustness
+
+## Performance Considerations
+
+- **Schema Complexity**: Simpler schemas generally result in better parsing success rates
+- **Template Length**: Shorter, clearer instructions often work better than verbose ones
+- **Validation Overhead**: Complex validators can impact performance with large datasets
+- **Memory Usage**: Large schemas and complex models consume more memory
+
+## Common Issues and Solutions
+
+| Issue | Cause | Solution |
+|-------|-------|----------|
+| JSON extraction fails | Malformed JSON in LLM response | Use robust JSON extraction with fallbacks |
+| Validation errors | LLM doesn't follow schema exactly | Add custom validators and type coercion |
+| Schema too complex | Overly detailed Pydantic models | Simplify models or break into smaller parts |
+| Inconsistent outputs | Ambiguous field descriptions | Improve field descriptions and examples |
+
+The `llm_pydantic_parser` module is essential for building reliable, production-ready applications that depend on structured data extraction from Large Language Models, ensuring data integrity and type safety throughout the OxyGent framework.

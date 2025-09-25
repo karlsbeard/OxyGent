@@ -1,0 +1,422 @@
+---
+title: Data Utils
+description: Advanced data structure utilities for tree building, node relationships, and hierarchical data processing
+---
+
+# Data Utils
+
+The `data_utils` module provides specialized utilities for handling complex data structures, particularly focused on tree building, node relationship management, and hierarchical data processing. These utilities are essential for workflow orchestration and agent coordination in the OxyGent framework.
+
+## Overview
+
+This module contains functions designed to work with node-based data structures that include:
+
+- **Node Relationship Management**: Adding parent-child and pre-post node relationships
+- **Tree Construction**: Building hierarchical tree structures from flat node lists
+- **Parallel Processing Support**: Handling parallel execution groups in workflow trees
+- **Data Structure Transformation**: Converting between different tree representations
+
+## Import Statement
+
+```python
+from oxygent.utils.data_utils import (
+    add_post_and_child_node_ids,
+    build_tree
+)
+```
+
+## Core Functions
+
+### add_post_and_child_node_ids(nodes: List[Dict]) -> None
+
+Enhances a list of node dictionaries by adding bidirectional relationship fields. This function modifies the input nodes in-place to include both forward and backward relationship mappings.
+
+**Parameters:**
+- `nodes` (List[Dict]): List of node dictionaries, each must contain:
+  - `node_id` (str): Unique identifier for the node
+  - `pre_node_ids` (List[str]): List of prerequisite node IDs
+  - `father_node_id` (str, optional): Parent node identifier
+
+**Returns:**
+- `None`: Modifies the input list in-place
+
+**Adds to Each Node:**
+- `post_node_ids` (List[str]): Nodes that depend on this node
+- `child_node_ids` (List[str]): Direct children of this node
+
+**Node Structure Requirements:**
+```python
+# Input node structure
+node = {
+    "node_id": "unique_id",
+    "pre_node_ids": ["dependency1", "dependency2"],
+    "father_node_id": "parent_id"  # Optional
+}
+
+# After processing, node gains:
+# node["post_node_ids"] = ["dependent1", "dependent2"]
+# node["child_node_ids"] = ["child1", "child2"]
+```
+
+**Example:**
+```python
+nodes = [
+    {
+        "node_id": "task1",
+        "pre_node_ids": [],
+        "father_node_id": None
+    },
+    {
+        "node_id": "task2", 
+        "pre_node_ids": ["task1"],
+        "father_node_id": "task1"
+    },
+    {
+        "node_id": "task3",
+        "pre_node_ids": ["task1"],
+        "father_node_id": "task1"
+    }
+]
+
+add_post_and_child_node_ids(nodes)
+
+print(nodes[0])
+# Output: {
+#   "node_id": "task1",
+#   "pre_node_ids": [],
+#   "father_node_id": None,
+#   "post_node_ids": ["task2", "task3"],
+#   "child_node_ids": ["task2", "task3"]
+# }
+```
+
+**Use Cases:**
+- **Dependency Resolution**: Understanding which nodes depend on the current node
+- **Workflow Planning**: Building execution order based on dependencies
+- **Tree Navigation**: Bidirectional traversal of node hierarchies
+- **Cleanup Operations**: Cascading updates when nodes are modified
+
+### build_tree(input_data: List[Dict]) -> Dict
+
+Constructs a hierarchical tree structure from a flat list of interconnected nodes. This function is particularly useful for workflow visualization and execution planning.
+
+**Parameters:**
+- `input_data` (List[Dict]): List of node dictionaries, each must contain:
+  - `node_id` (str): Unique node identifier
+  - `node_name` (str): Display name for the node
+  - `node_type` (str): Type classification of the node
+  - `from_node_id` (str, optional): Parent node reference
+  - `order` (int): Execution order within the same level
+  - `parallel_id` (str, optional): Grouping ID for parallel execution
+
+**Returns:**
+- `Dict`: Root node of the constructed tree with nested structure
+
+**Tree Node Structure:**
+```python
+tree_node = {
+    "node_id": "unique_id",
+    "node_name": "Display Name",
+    "node_type": "task_type",
+    "nodes": [
+        # Array of child nodes or parallel groups
+        single_child_node,
+        [parallel_node1, parallel_node2],  # Parallel group
+        another_single_node
+    ]
+}
+```
+
+**Example:**
+```python
+workflow_nodes = [
+    {
+        "node_id": "start",
+        "node_name": "Start Process",
+        "node_type": "trigger",
+        "from_node_id": None,
+        "order": 1
+    },
+    {
+        "node_id": "parallel1",
+        "node_name": "Data Processing",
+        "node_type": "processor",
+        "from_node_id": "start",
+        "order": 2,
+        "parallel_id": "group1"
+    },
+    {
+        "node_id": "parallel2", 
+        "node_name": "Validation",
+        "node_type": "validator",
+        "from_node_id": "start",
+        "order": 2,
+        "parallel_id": "group1"
+    },
+    {
+        "node_id": "finish",
+        "node_name": "Complete",
+        "node_type": "finalizer",
+        "from_node_id": None,
+        "order": 3
+    }
+]
+
+tree = build_tree(workflow_nodes)
+print(tree)
+# Output: {
+#   "node_id": "start",
+#   "node_name": "Start Process", 
+#   "node_type": "trigger",
+#   "nodes": [
+#     [
+#       {"node_id": "parallel1", "node_name": "Data Processing", ...},
+#       {"node_id": "parallel2", "node_name": "Validation", ...}
+#     ],
+#     {"node_id": "finish", "node_name": "Complete", ...}
+#   ]
+# }
+```
+
+## Internal Helper Functions
+
+The module includes several internal helper functions that support the main tree-building functionality:
+
+### _build_children_map(node_dict: Dict) -> defaultdict
+
+Creates a mapping from parent node IDs to their children lists.
+
+**Parameters:**
+- `node_dict` (Dict): Dictionary mapping node IDs to node objects
+
+**Returns:**
+- `defaultdict(list)`: Parent ID to children list mapping
+
+### _build_node_entry(node: Dict, children_map: defaultdict) -> Dict
+
+Constructs a single tree node entry with its complete subtree.
+
+**Parameters:**
+- `node` (Dict): Source node data
+- `children_map` (defaultdict): Parent-to-children mapping
+
+**Returns:**
+- `Dict`: Complete tree node with nested children
+
+### _build_subtree(parent: Dict, children_map: defaultdict) -> List
+
+Recursively builds the subtree for a given parent node, handling both sequential and parallel execution patterns.
+
+**Parameters:**
+- `parent` (Dict): Parent node data
+- `children_map` (defaultdict): Parent-to-children mapping
+
+**Returns:**
+- `List`: Array of child nodes and parallel groups
+
+### _group_children(children: List[Dict]) -> Tuple
+
+Separates children into non-parallel nodes and parallel groups.
+
+**Parameters:**
+- `children` (List[Dict]): List of child nodes
+
+**Returns:**
+- `Tuple`: (non_parallel_nodes, parallel_groups_dict)
+
+### _process_parallel_groups(parallel_groups: Dict) -> List
+
+Processes parallel execution groups and prepares them for tree insertion.
+
+**Parameters:**
+- `parallel_groups` (Dict): Dictionary of parallel group ID to nodes
+
+**Returns:**
+- `List`: Processed parallel groups with order information
+
+### _merge_and_sort_children(non_parallel: List, parallel_list: List) -> List
+
+Merges and sorts non-parallel nodes with parallel groups by execution order.
+
+**Parameters:**
+- `non_parallel` (List): Sequential execution nodes
+- `parallel_list` (List): Parallel execution groups
+
+**Returns:**
+- `List`: Sorted list of all children with order preserved
+
+## Advanced Usage Patterns
+
+### Workflow Execution Planning
+
+```python
+def plan_workflow_execution(workflow_definition):
+    """Plan the execution order of workflow nodes."""
+    
+    # Add bidirectional relationships
+    add_post_and_child_node_ids(workflow_definition)
+    
+    # Build execution tree
+    execution_tree = build_tree(workflow_definition)
+    
+    return execution_tree
+
+# Example workflow with dependencies
+workflow = [
+    {"node_id": "init", "node_name": "Initialize", "node_type": "setup", 
+     "from_node_id": None, "order": 1, "pre_node_ids": []},
+    {"node_id": "fetch", "node_name": "Fetch Data", "node_type": "data", 
+     "from_node_id": "init", "order": 2, "pre_node_ids": ["init"]},
+    {"node_id": "process", "node_name": "Process", "node_type": "compute", 
+     "from_node_id": "fetch", "order": 3, "pre_node_ids": ["fetch"]}
+]
+
+execution_plan = plan_workflow_execution(workflow)
+```
+
+### Parallel Processing Coordination
+
+```python
+def extract_parallel_tasks(tree_node):
+    """Extract all parallel task groups from a tree."""
+    parallel_groups = []
+    
+    def traverse(node):
+        if isinstance(node, list):  # Parallel group
+            parallel_groups.append(node)
+        elif isinstance(node, dict) and "nodes" in node:
+            for child in node["nodes"]:
+                traverse(child)
+    
+    traverse(tree_node)
+    return parallel_groups
+
+# Find all parallel execution opportunities
+tree = build_tree(workflow_nodes)
+parallel_tasks = extract_parallel_tasks(tree)
+
+for group in parallel_tasks:
+    print(f"Parallel group with {len(group)} tasks:")
+    for task in group:
+        print(f"  - {task['node_name']}")
+```
+
+### Dependency Analysis
+
+```python
+def analyze_dependencies(nodes):
+    """Analyze node dependencies and relationships."""
+    add_post_and_child_node_ids(nodes)
+    
+    analysis = {}
+    for node in nodes:
+        analysis[node["node_id"]] = {
+            "dependencies": len(node["pre_node_ids"]),
+            "dependents": len(node["post_node_ids"]),
+            "children": len(node["child_node_ids"]),
+            "is_root": len(node["pre_node_ids"]) == 0,
+            "is_leaf": len(node["post_node_ids"]) == 0
+        }
+    
+    return analysis
+
+# Analyze workflow complexity
+dependency_analysis = analyze_dependencies(workflow_nodes)
+print(f"Root nodes: {[k for k, v in dependency_analysis.items() if v['is_root']]}")
+print(f"Leaf nodes: {[k for k, v in dependency_analysis.items() if v['is_leaf']]}")
+```
+
+## Error Handling
+
+The module includes robust error handling for common scenarios:
+
+- **Missing Node References**: Graceful handling of invalid `from_node_id` references
+- **Circular Dependencies**: Prevention of infinite loops in tree construction  
+- **Malformed Data**: Validation of required node fields
+- **Empty Datasets**: Proper handling of empty or single-node datasets
+
+## Performance Considerations
+
+- **In-Place Modification**: `add_post_and_child_node_ids` modifies nodes in-place for memory efficiency
+- **Single Pass Processing**: Most operations complete in O(n) time complexity
+- **Lazy Evaluation**: Tree construction only processes required branches
+- **Memory Optimization**: Efficient data structure reuse during tree building
+
+## Integration with OxyGent Framework
+
+These utilities are extensively used throughout the OxyGent framework for:
+
+- **Workflow Orchestration**: Planning and executing complex multi-step processes
+- **Agent Coordination**: Managing dependencies between different agent tasks
+- **Parallel Processing**: Coordinating concurrent execution of independent tasks
+- **Resource Management**: Understanding task relationships for resource allocation
+
+## Common Patterns
+
+### Sequential Workflow Processing
+
+```python
+def create_sequential_workflow(tasks):
+    """Create a sequential workflow from a list of tasks."""
+    nodes = []
+    prev_id = None
+    
+    for i, task in enumerate(tasks):
+        node = {
+            "node_id": f"task_{i}",
+            "node_name": task["name"],
+            "node_type": task["type"],
+            "from_node_id": prev_id,
+            "order": i + 1,
+            "pre_node_ids": [prev_id] if prev_id else []
+        }
+        nodes.append(node)
+        prev_id = node["node_id"]
+    
+    return build_tree(nodes)
+```
+
+### Parallel Task Branching
+
+```python
+def create_parallel_branches(main_task, parallel_tasks, merge_task=None):
+    """Create a workflow with parallel task execution."""
+    nodes = [main_task]  # Root task
+    
+    # Add parallel tasks
+    for i, task in enumerate(parallel_tasks):
+        task.update({
+            "from_node_id": main_task["node_id"],
+            "parallel_id": "parallel_group",
+            "order": 2  # Same order for parallel execution
+        })
+        nodes.append(task)
+    
+    # Add merge task if provided
+    if merge_task:
+        merge_task.update({
+            "from_node_id": None,  # Will connect to all parallel tasks
+            "order": 3,
+            "pre_node_ids": [task["node_id"] for task in parallel_tasks]
+        })
+        nodes.append(merge_task)
+    
+    return build_tree(nodes)
+```
+
+## Best Practices
+
+1. **Node ID Uniqueness**: Always ensure node IDs are unique across the entire workflow
+2. **Order Consistency**: Use consistent ordering schemes for predictable execution
+3. **Parallel Grouping**: Group related parallel tasks using the same `parallel_id`
+4. **Dependency Validation**: Validate that all `pre_node_ids` reference existing nodes
+5. **Tree Validation**: Always verify the constructed tree matches expected structure
+
+## Troubleshooting
+
+Common issues and solutions:
+
+- **Empty Tree Output**: Check that at least one node has `from_node_id` as `None`
+- **Missing Dependencies**: Ensure all referenced node IDs exist in the dataset
+- **Parallel Grouping Issues**: Verify that parallel tasks share the same `parallel_id`
+- **Execution Order Problems**: Check that `order` values are consistent and sequential

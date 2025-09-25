@@ -1,0 +1,655 @@
+---
+title: LocalEs
+description: File-system-backed Elasticsearch simulation with cross-platform UTF-8 safety and atomic data operations
+---
+
+# LocalEs
+
+The `LocalEs` class provides a lightweight, file-system-backed implementation of Elasticsearch functionality. It simulates a subset of Elasticsearch operations by persisting documents as JSON files on the local filesystem, with robust cross-platform behavior and UTF-8 safety features.
+
+## Overview
+
+`LocalEs` is designed for development environments, testing, and scenarios where a full Elasticsearch cluster is not available or needed. It provides:
+
+- **File-based Storage**: Documents stored as JSON files with atomic write operations
+- **Cross-platform Compatibility**: Works reliably on Windows, macOS, and Linux
+- **UTF-8 Safety**: Automatic encoding detection and migration for legacy files
+- **Data Integrity**: Corruption detection and recovery mechanisms
+- **Development-friendly**: No external dependencies or server setup required
+
+## Design Goals
+
+### Robust Cross-platform Behavior
+- Uses `os.replace()` for atomic writes across all platforms
+- No reliance on POSIX-only semantics
+- Consistent behavior regardless of underlying filesystem
+
+### UTF-8 Persistence
+- All new files created with UTF-8 encoding
+- Automatic detection and migration of legacy-encoded files
+- Graceful handling of encoding issues
+
+### Data Safety First
+- Never overwrites existing indices unless explicitly requested
+- Corrupted files preserved with `.bak` extension before recovery attempts
+- Atomic operations prevent data loss during concurrent access
+
+## Class Definition
+
+```python
+from oxygent.databases.db_es.local_es import LocalEs
+
+# Initialize with automatic directory creation
+es = LocalEs()
+
+# All operations are now available with file-based storage
+await es.create_index("my_index", index_config)
+await es.index("my_index", "doc1", document_data)
+```
+
+## Constructor
+
+### __init__()
+
+Initializes the LocalEs instance with automatic directory setup.
+
+**Functionality**:
+- Creates data directory using `Config.get_cache_save_dir()`
+- Sets up file locking mechanisms for concurrent access
+- Prepares index and mapping file path resolvers
+
+```python
+# Data stored in: {cache_save_dir}/local_es_data/
+# Index files: {index_name}.json
+# Mapping files: {index_name}_mapping.json
+es = LocalEs()
+```
+
+## Core Methods
+
+### async create_index(index_name: str, body: dict[str, Any]) -> dict[str, bool]
+
+Creates a new index with the specified configuration.
+
+**Parameters**:
+- `index_name` (str): Name of the index to create
+- `body` (dict): Index configuration including mappings and settings
+
+**Returns**: `{"acknowledged": True}` on successful creation
+
+**Behavior**:
+- Persists mapping configuration to `{index_name}_mapping.json`
+- Creates empty index file only if it doesn't exist (preserves existing data)
+- Validates that both parameters are non-empty
+
+```python
+index_config = {
+    "mappings": {
+        "properties": {
+            "title": {"type": "text"},
+            "timestamp": {"type": "date"},
+            "user_id": {"type": "keyword"}
+        }
+    },
+    "settings": {
+        "number_of_shards": 1
+    }
+}
+
+result = await es.create_index("user_logs", index_config)
+# Returns: {"acknowledged": True}
+```
+
+### async index(index_name: str, doc_id: str, body: dict[str, Any])
+
+Indexes a document (create or replace operation).
+
+**Parameters**:
+- `index_name` (str): Target index name
+- `doc_id` (str): Unique document identifier
+- `body` (dict): Document content to store
+
+**Returns**: `{"_id": doc_id, "result": "created"}`
+
+**Behavior**:
+- Replaces entire document if it exists
+- Uses atomic write operations with file locking
+- Creates backup before modifications
+
+```python
+document = {
+    "user_id": "user_123",
+    "action": "login",
+    "timestamp": "2024-09-01T10:00:00Z",
+    "metadata": {"ip": "192.168.1.1"}
+}
+
+result = await es.index("user_logs", "log_001", document)
+# Returns: {"_id": "log_001", "result": "created"}
+```
+
+### async update(index_name: str, doc_id: str, body: dict[str, Any])
+
+Updates an existing document with partial data.
+
+**Parameters**:
+- `index_name` (str): Target index name
+- `doc_id` (str): Document identifier to update
+- `body` (dict): Fields to update (merged with existing data)
+
+**Returns**: `{"_id": doc_id, "result": "updated"}`
+
+**Behavior**:
+- Merges new data with existing document
+- Creates document if it doesn't exist
+- Preserves existing fields not specified in update
+
+```python
+updates = {
+    "last_seen": "2024-09-01T10:30:00Z",
+    "session_count": 5
+}
+
+result = await es.update("user_logs", "log_001", updates)
+# Returns: {"_id": "log_001", "result": "updated"}
+
+# Original document is merged with updates:
+# {
+#   "user_id": "user_123",           # preserved
+#   "action": "login",               # preserved  
+#   "timestamp": "2024-09-01T10:00:00Z", # preserved
+#   "last_seen": "2024-09-01T10:30:00Z",  # added
+#   "session_count": 5               # added
+# }
+```
+
+### async exists(index_name: str, doc_id: str) -> bool
+
+Checks if a document exists in the specified index.
+
+**Parameters**:
+- `index_name` (str): Index to check
+- `doc_id` (str): Document ID to verify
+
+**Returns**: `True` if document exists, `False` otherwise
+
+```python
+exists = await es.exists("user_logs", "log_001")
+if exists:
+    await es.update("user_logs", "log_001", updates)
+else:
+    await es.index("user_logs", "log_001", new_document)
+```
+
+### async search(index_name: str, body: dict[str, Any])
+
+Executes a search query against the index.
+
+**Parameters**:
+- `index_name` (str): Index to search
+- `body` (dict): Search query with filtering, sorting, and pagination
+
+**Returns**: Search results in Elasticsearch format
+
+**Supported Query Types**:
+- `term`: Exact match queries
+- `terms`: Multiple value match queries  
+- `bool`: Boolean queries with `must`, `should`, `must_not`
+
+```python
+# Simple term query
+search_body = {
+    "query": {
+        "term": {"user_id": "user_123"}
+    },
+    "size": 10
+}
+
+results = await es.search("user_logs", search_body)
+
+# Boolean query with multiple conditions
+complex_query = {
+    "query": {
+        "bool": {
+            "must": [
+                {"term": {"user_id": "user_123"}},
+                {"terms": {"action": ["login", "logout"]}}
+            ],
+            "must_not": [
+                {"term": {"status": "failed"}}
+            ]
+        }
+    },
+    "sort": [{"timestamp": {"order": "desc"}}],
+    "size": 50
+}
+
+results = await es.search("user_logs", complex_query)
+
+# Results format:
+# {
+#   "hits": {
+#     "hits": [
+#       {"_id": "doc1", "_source": {...}},
+#       {"_id": "doc2", "_source": {...}}
+#     ]
+#   }
+# }
+```
+
+### async close() -> bool
+
+Cleans up resources and closes connections.
+
+**Returns**: `True` (no cleanup needed for file-based implementation)
+
+```python
+try:
+    # Perform operations
+    results = await es.search("index", query)
+finally:
+    await es.close()  # Always returns True
+```
+
+## Advanced Methods
+
+### async find_node_safe(index_name: str, trace_id: str, node_id: str)
+
+Safely finds a document by node ID with trace ID validation.
+
+**Parameters**:
+- `index_name` (str): Index to search
+- `trace_id` (str): Expected trace ID for validation
+- `node_id` (str): Node ID to find
+
+**Returns**: Matching document or `None` if not found/invalid
+
+**Behavior**:
+- First attempts direct node ID lookup
+- Validates trace ID matches expected value
+- Falls back to compound query if direct lookup fails
+- Logs warnings for trace ID mismatches
+
+```python
+node_doc = await es.find_node_safe("traces", "trace_123", "node_456")
+if node_doc:
+    print(f"Found node: {node_doc['_id']}")
+else:
+    print("Node not found or trace ID mismatch")
+```
+
+### async get_by_node_id(index_name: str, node_id: str)
+
+Retrieves a document by its node_id field.
+
+**Parameters**:
+- `index_name` (str): Index to search
+- `node_id` (str): Node ID to find
+
+**Returns**: Document with matching node_id or `None`
+
+```python
+node_doc = await es.get_by_node_id("traces", "node_123")
+if node_doc:
+    trace_data = node_doc["_source"]
+```
+
+### async update_by_node_id(index_name: str, node_id: str, updates: dict[str, Any])
+
+Updates a document identified by its node_id field.
+
+**Parameters**:
+- `index_name` (str): Target index
+- `node_id` (str): Node ID to update
+- `updates` (dict): Fields to update
+
+**Returns**: `{"_id": actual_doc_id, "result": "updated"}` or `{"result": "not_found"}`
+
+```python
+result = await es.update_by_node_id(
+    "traces", 
+    "node_123", 
+    {"status": "completed", "end_time": "2024-09-01T10:30:00Z"}
+)
+
+if result["result"] == "updated":
+    print(f"Updated document {result['_id']}")
+```
+
+## File System Structure
+
+### Directory Layout
+
+```
+{cache_save_dir}/local_es_data/
+├── user_logs.json              # Index data
+├── user_logs_mapping.json      # Index mapping
+├── user_logs.json.bak         # Backup file
+├── traces.json                # Another index
+├── traces_mapping.json        # Its mapping
+└── corrupted_file.corrupt     # Preserved corrupted file
+```
+
+### File Formats
+
+**Index Data File** (`{index_name}.json`):
+```json
+{
+  "doc_001": {
+    "user_id": "user_123",
+    "action": "login",
+    "timestamp": "2024-09-01T10:00:00Z"
+  },
+  "doc_002": {
+    "user_id": "user_456", 
+    "action": "logout",
+    "timestamp": "2024-09-01T10:15:00Z"
+  }
+}
+```
+
+**Mapping File** (`{index_name}_mapping.json`):
+```json
+{
+  "mappings": {
+    "properties": {
+      "user_id": {"type": "keyword"},
+      "action": {"type": "keyword"},
+      "timestamp": {"type": "date"}
+    }
+  },
+  "settings": {
+    "number_of_shards": 1
+  }
+}
+```
+
+## Data Safety Features
+
+### Atomic Write Operations
+
+```python
+async def _write_json_atomic(self, path: str, data: Dict[str, Any]) -> None:
+    # 1. Write to temporary file first
+    async with tempfile.NamedTemporaryFile(...) as tf:
+        await tf.write(json.dumps(data, ensure_ascii=False, indent=2))
+        tmp_path = tf.name
+    
+    # 2. Atomically replace original file
+    await aiofiles.os.replace(tmp_path, path)
+    
+    # 3. Clean up temporary file if replacement failed
+```
+
+### Corruption Detection and Recovery
+
+```python
+# Corruption handling workflow:
+# 1. Attempt to read with UTF-8
+# 2. Fallback to system encoding
+# 3. If still corrupted, try backup file
+# 4. If backup also corrupted, preserve original and start fresh
+
+data = await self._read_json_safe(data_path)
+if data is None:  # Corrupted
+    # Try backup
+    if await aiofiles.os.path.exists(backup_path):
+        await aiofiles.os.replace(backup_path, data_path)
+        data = await self._read_json_safe(data_path)
+    
+    if data is None:  # Still corrupted
+        # Preserve corrupted file and start fresh
+        corrupt_path = f"{data_path}.corrupt"
+        await aiofiles.os.rename(data_path, corrupt_path)
+        data = {}
+```
+
+### Concurrent Access Protection
+
+```python
+# File-level locking prevents corruption during concurrent access
+lock = self._locks.setdefault(index_name, asyncio.Lock())
+async with lock:
+    # All file operations are protected
+    data = await self._read_json_safe(data_path)
+    data[doc_id] = body
+    await self._write_json_atomic(data_path, data)
+```
+
+## Query Engine Implementation
+
+### Boolean Query Processing
+
+The LocalEs implementation includes a naive but functional query engine:
+
+```python
+def _filter_docs(self, docs: list, query: dict):
+    """Process Elasticsearch-style queries on document list."""
+    
+    if "term" in query:
+        # Exact match
+        field, value = next(iter(query["term"].items()))
+        return [d for d in docs if d["_source"].get(field) == value]
+    
+    if "bool" in query:
+        bool_query = query["bool"]
+        
+        if "must" in bool_query:
+            # All conditions must match (AND)
+            for condition in bool_query["must"]:
+                docs = self._filter_docs(docs, condition)
+        
+        if "should" in bool_query:
+            # Any condition can match (OR)
+            matching_docs = []
+            for doc in docs:
+                for condition in bool_query["should"]:
+                    if self._match_single_condition(doc, condition):
+                        matching_docs.append(doc)
+                        break
+            docs = matching_docs
+    
+    return docs
+```
+
+## Usage Examples
+
+### Development Environment Setup
+
+```python
+from oxygent.databases.db_es.local_es import LocalEs
+
+class DevEnvironment:
+    def __init__(self):
+        self.es = LocalEs()
+    
+    async def setup_test_data(self):
+        # Create test index
+        await self.es.create_index("test_logs", {
+            "mappings": {
+                "properties": {
+                    "level": {"type": "keyword"},
+                    "message": {"type": "text"},
+                    "timestamp": {"type": "date"}
+                }
+            }
+        })
+        
+        # Add test documents
+        test_docs = [
+            {"level": "INFO", "message": "Application started", "timestamp": "2024-09-01T09:00:00Z"},
+            {"level": "ERROR", "message": "Database connection failed", "timestamp": "2024-09-01T09:05:00Z"},
+            {"level": "INFO", "message": "Request processed", "timestamp": "2024-09-01T09:10:00Z"}
+        ]
+        
+        for i, doc in enumerate(test_docs):
+            await self.es.index("test_logs", f"log_{i:03d}", doc)
+    
+    async def test_queries(self):
+        # Search for errors
+        error_query = {
+            "query": {"term": {"level": "ERROR"}},
+            "size": 100
+        }
+        errors = await self.es.search("test_logs", error_query)
+        
+        # Complex boolean query
+        complex_query = {
+            "query": {
+                "bool": {
+                    "must": [
+                        {"terms": {"level": ["INFO", "WARN"]}},
+                    ],
+                    "must_not": [
+                        {"term": {"message": "test"}}
+                    ]
+                }
+            },
+            "sort": [{"timestamp": {"order": "desc"}}]
+        }
+        results = await self.es.search("test_logs", complex_query)
+        return results
+```
+
+### Trace Management Integration
+
+```python
+class TraceManager:
+    def __init__(self):
+        self.es = LocalEs()
+    
+    async def save_trace(self, trace_id: str, node_id: str, trace_data: dict):
+        await self.es.index("traces", f"{trace_id}_{node_id}", {
+            "trace_id": trace_id,
+            "node_id": node_id,
+            "timestamp": trace_data.get("timestamp"),
+            "request": trace_data.get("request"),
+            "response": trace_data.get("response"),
+            "status": "completed"
+        })
+    
+    async def find_trace_by_node(self, trace_id: str, node_id: str):
+        return await self.es.find_node_safe("traces", trace_id, node_id)
+    
+    async def update_trace_status(self, node_id: str, status: str):
+        await self.es.update_by_node_id("traces", node_id, {
+            "status": status,
+            "updated_at": "2024-09-01T10:30:00Z"
+        })
+```
+
+## Performance Considerations
+
+### File System Optimization
+
+- **Atomic Operations**: Prevents corruption but may be slower for high-frequency updates
+- **JSON Parsing**: Full file read/write on each operation - not suitable for large datasets
+- **Concurrent Access**: File locking may create bottlenecks under heavy load
+
+### Scalability Limits
+
+- **Dataset Size**: Suitable for development/testing, not production-scale data
+- **Query Performance**: Linear scan through documents - no indexing optimization
+- **Memory Usage**: Entire index loaded into memory for operations
+
+### Recommended Use Cases
+
+**Good for**:
+- Development and testing environments
+- Small datasets (< 10,000 documents per index)
+- Prototyping and proof-of-concept work
+- Offline or embedded applications
+
+**Not suitable for**:
+- Production applications with large datasets
+- High-frequency write operations
+- Complex analytical queries
+- Multi-user concurrent access
+
+## Migration Path
+
+### From LocalEs to Production ES
+
+```python
+class ESMigrator:
+    def __init__(self, local_es: LocalEs, prod_es):
+        self.local_es = local_es
+        self.prod_es = prod_es
+    
+    async def migrate_index(self, index_name: str):
+        # Read all documents from file
+        data_path = self.local_es._index_path(index_name)
+        data = await self.local_es._read_json_safe(data_path) or {}
+        
+        # Recreate index in production
+        mapping_path = self.local_es._mapping_path(index_name)
+        mapping = await self.local_es._read_json_safe(mapping_path)
+        if mapping:
+            await self.prod_es.create_index(index_name, mapping)
+        
+        # Migrate documents
+        for doc_id, doc_body in data.items():
+            await self.prod_es.index(index_name, doc_id, doc_body)
+```
+
+## Configuration Integration
+
+LocalEs integrates with the OxyGent configuration system:
+
+```python
+from oxygent.config import Config
+
+# Data directory automatically configured
+data_dir = os.path.join(Config.get_cache_save_dir(), "local_es_data")
+
+# Override data directory if needed
+class CustomLocalEs(LocalEs):
+    def __init__(self, custom_data_dir: str):
+        self.data_dir = custom_data_dir
+        os.makedirs(self.data_dir, exist_ok=True)
+        self._locks = {}
+```
+
+## Error Handling
+
+### Graceful Degradation
+
+```python
+async def robust_search(es: LocalEs, index_name: str, query: dict):
+    try:
+        return await es.search(index_name, query)
+    except Exception as e:
+        logger.warning(f"Search failed for {index_name}: {e}")
+        # Return empty results instead of crashing
+        return {"hits": {"hits": []}}
+```
+
+### Corruption Recovery
+
+```python
+async def check_index_health(es: LocalEs, index_name: str):
+    data_path = es._index_path(index_name)
+    backup_path = f"{data_path}.bak"
+    
+    # Check if index file is readable
+    data = await es._read_json_safe(data_path)
+    if data is None:
+        logger.error(f"Index {index_name} is corrupted")
+        
+        # Check if backup exists
+        if await aiofiles.os.path.exists(backup_path):
+            logger.info(f"Backup found for {index_name}, attempting recovery")
+            # Recovery will happen automatically on next operation
+        else:
+            logger.warning(f"No backup available for {index_name}")
+    
+    return data is not None
+```
+
+## See Also
+
+- [BaseEs](./base-es) - Abstract base class interface
+- [JesEs](./jes-es) - Production Elasticsearch implementation
+- [BaseDB](./base-db) - Parent class providing retry mechanisms
+- [Configuration Management](../config) - Cache directory configuration
+- [Database Services Overview](./index) - Complete database services documentation

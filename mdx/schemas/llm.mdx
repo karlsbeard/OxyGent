@@ -1,0 +1,727 @@
+---
+title: LLM Schema
+description: Pydantic models for Large Language Model responses and state management in the OxyGent framework
+---
+
+# LLM Schema
+
+The LLM schema module defines Pydantic models for managing Large Language Model (LLM) responses and state transitions in the OxyGent framework. It provides structured representations for LLM outputs, including tool calls, answers, and error states.
+
+## Overview
+
+The LLM schema consists of two main components:
+
+- **LLMState**: Enumeration defining possible LLM response states
+- **LLMResponse**: Pydantic model for structured LLM response data
+
+These schemas ensure consistent handling of LLM interactions across the OxyGent framework, enabling proper state management and response processing.
+
+## Import
+
+```python
+from oxygent.schemas import LLMState, LLMResponse
+```
+
+## Schema Definitions
+
+### LLMState
+
+An enumeration that defines the possible states of an LLM response.
+
+```python
+from enum import Enum
+
+class LLMState(Enum):
+    TOOL_CALL = "tool_call"
+    ANSWER = "answer"
+    ERROR_PARSE = "error_parse"
+    ERROR_CALL = "error_call"
+```
+
+#### State Values
+
+| State | Value | Description |
+|-------|-------|-------------|
+| `TOOL_CALL` | `"tool_call"` | LLM has requested a tool/function call |
+| `ANSWER` | `"answer"` | LLM has provided a direct answer/response |
+| `ERROR_PARSE` | `"error_parse"` | Error occurred while parsing LLM response |
+| `ERROR_CALL` | `"error_call"` | Error occurred while making the LLM call |
+
+### LLMResponse
+
+A Pydantic model that structures LLM response data with state and output information.
+
+```python
+from pydantic import BaseModel, Field
+from typing import Union
+
+class LLMResponse(BaseModel):
+    state: LLMState
+    output: Union[str, dict]
+    ori_response: str = Field(default="")
+```
+
+#### Field Specifications
+
+##### state
+- **Type**: `LLMState`
+- **Required**: Yes
+- **Description**: Current state of the LLM response
+- **Values**: `TOOL_CALL`, `ANSWER`, `ERROR_PARSE`, `ERROR_CALL`
+
+##### output
+- **Type**: `Union[str, dict]`
+- **Required**: Yes
+- **Description**: The processed output from the LLM
+- **Usage**: 
+  - `str`: Direct text responses or error messages
+  - `dict`: Structured data like tool call information
+
+##### ori_response
+- **Type**: `str`
+- **Default**: `""`
+- **Description**: The original, unprocessed response from the LLM
+- **Usage**: Debugging and audit trail purposes
+
+## Usage Examples
+
+### Creating Tool Call Response
+
+```python
+from oxygent.schemas import LLMState, LLMResponse
+
+# LLM requests a tool call
+tool_call_response = LLMResponse(
+    state=LLMState.TOOL_CALL,
+    output={
+        "tool_name": "search_web",
+        "arguments": {
+            "query": "Python async programming",
+            "max_results": 5
+        }
+    },
+    ori_response='{"function_call": {"name": "search_web", "arguments": "{\\"query\\": \\"Python async programming\\", \\"max_results\\": 5}"}}'
+)
+
+print(f"State: {tool_call_response.state.value}")
+print(f"Tool: {tool_call_response.output['tool_name']}")
+print(f"Arguments: {tool_call_response.output['arguments']}")
+```
+
+### Creating Direct Answer Response
+
+```python
+from oxygent.schemas import LLMState, LLMResponse
+
+# LLM provides direct answer
+answer_response = LLMResponse(
+    state=LLMState.ANSWER,
+    output="Python async programming allows you to write concurrent code using the async/await syntax. It's particularly useful for I/O-bound operations.",
+    ori_response="Python async programming allows you to write concurrent code using the async/await syntax. It's particularly useful for I/O-bound operations."
+)
+
+print(f"State: {answer_response.state.value}")
+print(f"Answer: {answer_response.output}")
+```
+
+### Handling Parse Errors
+
+```python
+from oxygent.schemas import LLMState, LLMResponse
+
+# Error parsing LLM response
+parse_error_response = LLMResponse(
+    state=LLMState.ERROR_PARSE,
+    output="Failed to parse JSON response: Invalid syntax at line 1, column 15",
+    ori_response='{"function_call": {"name": "search_web", "arguments": "invalid json}}'
+)
+
+print(f"State: {parse_error_response.state.value}")
+print(f"Error: {parse_error_response.output}")
+print(f"Original: {parse_error_response.ori_response}")
+```
+
+### Handling Call Errors
+
+```python
+from oxygent.schemas import LLMState, LLMResponse
+
+# Error making LLM call
+call_error_response = LLMResponse(
+    state=LLMState.ERROR_CALL,
+    output="Connection timeout: Failed to connect to LLM service after 30 seconds",
+    ori_response=""
+)
+
+print(f"State: {call_error_response.state.value}")
+print(f"Error: {call_error_response.output}")
+```
+
+## State Management Patterns
+
+### State-Based Response Processing
+
+```python
+from oxygent.schemas import LLMState, LLMResponse
+from typing import Any
+
+class LLMResponseProcessor:
+    """Process LLM responses based on state."""
+    
+    def process_response(self, llm_response: LLMResponse) -> Any:
+        """Process LLM response based on its state."""
+        
+        if llm_response.state == LLMState.TOOL_CALL:
+            return self._handle_tool_call(llm_response.output)
+        
+        elif llm_response.state == LLMState.ANSWER:
+            return self._handle_answer(llm_response.output)
+        
+        elif llm_response.state == LLMState.ERROR_PARSE:
+            return self._handle_parse_error(llm_response.output)
+        
+        elif llm_response.state == LLMState.ERROR_CALL:
+            return self._handle_call_error(llm_response.output)
+        
+        else:
+            raise ValueError(f"Unknown LLM state: {llm_response.state}")
+    
+    def _handle_tool_call(self, output: dict) -> dict:
+        """Handle tool call response."""
+        tool_name = output.get("tool_name")
+        arguments = output.get("arguments", {})
+        
+        print(f"Executing tool: {tool_name}")
+        print(f"Arguments: {arguments}")
+        
+        # Execute tool call logic here
+        return {"status": "tool_executed", "tool": tool_name}
+    
+    def _handle_answer(self, output: str) -> dict:
+        """Handle direct answer response."""
+        print(f"LLM Answer: {output}")
+        
+        return {"status": "answer_received", "content": output}
+    
+    def _handle_parse_error(self, output: str) -> dict:
+        """Handle parse error."""
+        print(f"Parse Error: {output}")
+        
+        return {"status": "parse_error", "error": output}
+    
+    def _handle_call_error(self, output: str) -> dict:
+        """Handle call error."""
+        print(f"Call Error: {output}")
+        
+        return {"status": "call_error", "error": output}
+
+# Usage
+processor = LLMResponseProcessor()
+
+# Process different response types
+tool_response = LLMResponse(state=LLMState.TOOL_CALL, output={"tool_name": "calculator", "arguments": {"expression": "2+2"}})
+result = processor.process_response(tool_response)
+print(result)
+```
+
+### Response Validation
+
+```python
+from oxygent.schemas import LLMState, LLMResponse
+from pydantic import ValidationError
+
+def validate_llm_response(response_data: dict) -> LLMResponse:
+    """Validate and create LLMResponse with error handling."""
+    try:
+        return LLMResponse(**response_data)
+    except ValidationError as e:
+        # Create error response for validation failures
+        return LLMResponse(
+            state=LLMState.ERROR_PARSE,
+            output=f"Validation failed: {str(e)}",
+            ori_response=str(response_data)
+        )
+
+# Usage examples
+valid_data = {
+    "state": LLMState.ANSWER,
+    "output": "This is a valid response",
+    "ori_response": "This is a valid response"
+}
+
+invalid_data = {
+    "state": "invalid_state",  # Invalid enum value
+    "output": "Response with invalid state"
+}
+
+valid_response = validate_llm_response(valid_data)
+invalid_response = validate_llm_response(invalid_data)
+
+print(f"Valid: {valid_response.state}")
+print(f"Invalid: {invalid_response.state}")  # Will be ERROR_PARSE
+```
+
+## Integration with LLM Services
+
+### OpenAI Integration Example
+
+```python
+import openai
+from oxygent.schemas import LLMState, LLMResponse
+from typing import List, Dict, Any
+import json
+
+class OpenAILLMService:
+    """Integration with OpenAI API using LLM schemas."""
+    
+    def __init__(self, api_key: str):
+        self.client = openai.OpenAI(api_key=api_key)
+    
+    async def generate_response(self, messages: List[Dict], functions: List[Dict] = None) -> LLMResponse:
+        """Generate response from OpenAI API."""
+        try:
+            # Make API call
+            response = self.client.chat.completions.create(
+                model="gpt-3.5-turbo",
+                messages=messages,
+                functions=functions if functions else None,
+                function_call="auto" if functions else None
+            )
+            
+            message = response.choices[0].message
+            ori_response = message.model_dump_json()
+            
+            # Check for function call
+            if hasattr(message, 'function_call') and message.function_call:
+                try:
+                    # Parse function call
+                    function_name = message.function_call.name
+                    function_args = json.loads(message.function_call.arguments)
+                    
+                    return LLMResponse(
+                        state=LLMState.TOOL_CALL,
+                        output={
+                            "tool_name": function_name,
+                            "arguments": function_args
+                        },
+                        ori_response=ori_response
+                    )
+                except json.JSONDecodeError as e:
+                    # Function call parse error
+                    return LLMResponse(
+                        state=LLMState.ERROR_PARSE,
+                        output=f"Failed to parse function arguments: {str(e)}",
+                        ori_response=ori_response
+                    )
+            
+            # Regular text response
+            return LLMResponse(
+                state=LLMState.ANSWER,
+                output=message.content or "",
+                ori_response=ori_response
+            )
+            
+        except Exception as e:
+            # API call error
+            return LLMResponse(
+                state=LLMState.ERROR_CALL,
+                output=f"OpenAI API error: {str(e)}",
+                ori_response=""
+            )
+
+# Usage
+llm_service = OpenAILLMService("your-api-key")
+
+messages = [
+    {"role": "user", "content": "What's the weather like in New York?"}
+]
+
+functions = [
+    {
+        "name": "get_weather",
+        "description": "Get current weather for a city",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "city": {"type": "string", "description": "City name"}
+            },
+            "required": ["city"]
+        }
+    }
+]
+
+# response = await llm_service.generate_response(messages, functions)
+# print(f"Response state: {response.state.value}")
+```
+
+### Response Chaining
+
+```python
+from oxygent.schemas import LLMState, LLMResponse
+from typing import List
+
+class LLMConversationManager:
+    """Manage conversation flow with LLM responses."""
+    
+    def __init__(self):
+        self.conversation_history: List[LLMResponse] = []
+    
+    def add_response(self, response: LLMResponse) -> None:
+        """Add response to conversation history."""
+        self.conversation_history.append(response)
+    
+    def get_last_successful_response(self) -> LLMResponse:
+        """Get the last successful (non-error) response."""
+        for response in reversed(self.conversation_history):
+            if response.state in [LLMState.ANSWER, LLMState.TOOL_CALL]:
+                return response
+        return None
+    
+    def count_responses_by_state(self, state: LLMState) -> int:
+        """Count responses by state."""
+        return sum(1 for r in self.conversation_history if r.state == state)
+    
+    def has_errors(self) -> bool:
+        """Check if conversation has any error responses."""
+        error_states = [LLMState.ERROR_PARSE, LLMState.ERROR_CALL]
+        return any(r.state in error_states for r in self.conversation_history)
+    
+    def get_conversation_summary(self) -> dict:
+        """Get summary of conversation states."""
+        summary = {}
+        for state in LLMState:
+            summary[state.value] = self.count_responses_by_state(state)
+        
+        summary["total_responses"] = len(self.conversation_history)
+        summary["success_rate"] = (
+            (summary["answer"] + summary["tool_call"]) / len(self.conversation_history)
+            if self.conversation_history else 0
+        )
+        
+        return summary
+
+# Usage
+conversation = LLMConversationManager()
+
+# Simulate conversation
+responses = [
+    LLMResponse(state=LLMState.ANSWER, output="Hello! How can I help you?"),
+    LLMResponse(state=LLMState.TOOL_CALL, output={"tool_name": "search", "arguments": {"query": "weather"}}),
+    LLMResponse(state=LLMState.ERROR_PARSE, output="JSON parsing failed"),
+    LLMResponse(state=LLMState.ANSWER, output="Based on the weather data, it's sunny today."),
+]
+
+for response in responses:
+    conversation.add_response(response)
+
+print("Conversation Summary:")
+summary = conversation.get_conversation_summary()
+for key, value in summary.items():
+    print(f"  {key}: {value}")
+```
+
+## Error Handling Patterns
+
+### Retry Logic with State Tracking
+
+```python
+from oxygent.schemas import LLMState, LLMResponse
+import asyncio
+import random
+
+class LLMRetryHandler:
+    """Handle retries for LLM calls with state-based decisions."""
+    
+    def __init__(self, max_retries: int = 3, backoff_factor: float = 1.5):
+        self.max_retries = max_retries
+        self.backoff_factor = backoff_factor
+    
+    async def call_with_retry(self, llm_call_func, *args, **kwargs) -> LLMResponse:
+        """Execute LLM call with retry logic."""
+        last_response = None
+        
+        for attempt in range(self.max_retries + 1):
+            try:
+                response = await llm_call_func(*args, **kwargs)
+                
+                # Success conditions
+                if response.state in [LLMState.ANSWER, LLMState.TOOL_CALL]:
+                    return response
+                
+                # Parse errors might be retryable
+                if response.state == LLMState.ERROR_PARSE and attempt < self.max_retries:
+                    print(f"Parse error on attempt {attempt + 1}, retrying...")
+                    last_response = response
+                    await asyncio.sleep(self.backoff_factor ** attempt)
+                    continue
+                
+                # Call errors are definitely retryable
+                if response.state == LLMState.ERROR_CALL and attempt < self.max_retries:
+                    print(f"Call error on attempt {attempt + 1}, retrying...")
+                    last_response = response
+                    await asyncio.sleep(self.backoff_factor ** attempt)
+                    continue
+                
+                # Max retries reached or non-retryable error
+                return response
+                
+            except Exception as e:
+                if attempt < self.max_retries:
+                    print(f"Exception on attempt {attempt + 1}: {e}, retrying...")
+                    await asyncio.sleep(self.backoff_factor ** attempt)
+                    continue
+                else:
+                    # Create error response for exception
+                    return LLMResponse(
+                        state=LLMState.ERROR_CALL,
+                        output=f"Max retries exceeded. Last error: {str(e)}",
+                        ori_response=""
+                    )
+        
+        return last_response or LLMResponse(
+            state=LLMState.ERROR_CALL,
+            output="Retry logic failed unexpectedly",
+            ori_response=""
+        )
+
+# Mock LLM function for demonstration
+async def mock_llm_call(prompt: str) -> LLMResponse:
+    """Mock LLM call that randomly fails."""
+    if random.random() < 0.3:  # 30% chance of call error
+        return LLMResponse(state=LLMState.ERROR_CALL, output="Connection failed")
+    
+    if random.random() < 0.2:  # 20% chance of parse error
+        return LLMResponse(state=LLMState.ERROR_PARSE, output="Invalid JSON response")
+    
+    # Success
+    return LLMResponse(state=LLMState.ANSWER, output=f"Response to: {prompt}")
+
+# Usage
+retry_handler = LLMRetryHandler(max_retries=3)
+# response = await retry_handler.call_with_retry(mock_llm_call, "Hello, world!")
+# print(f"Final response: {response.state.value} - {response.output}")
+```
+
+### Fallback Strategies
+
+```python
+from oxygent.schemas import LLMState, LLMResponse
+from typing import List, Callable, Any
+
+class LLMFallbackStrategy:
+    """Implement fallback strategies for LLM failures."""
+    
+    def __init__(self):
+        self.fallback_handlers = {
+            LLMState.ERROR_PARSE: self._handle_parse_fallback,
+            LLMState.ERROR_CALL: self._handle_call_fallback,
+        }
+    
+    def apply_fallback(self, failed_response: LLMResponse, context: dict = None) -> LLMResponse:
+        """Apply appropriate fallback strategy."""
+        handler = self.fallback_handlers.get(failed_response.state)
+        
+        if handler:
+            return handler(failed_response, context or {})
+        
+        return failed_response  # No fallback available
+    
+    def _handle_parse_fallback(self, response: LLMResponse, context: dict) -> LLMResponse:
+        """Handle parse error fallback."""
+        # Try to extract readable content from ori_response
+        ori_response = response.ori_response
+        
+        # Simple fallback: look for text content
+        if ori_response and isinstance(ori_response, str):
+            # Try to find quoted text or content between brackets
+            import re
+            
+            # Look for content in quotes
+            quotes_match = re.search(r'"([^"]*)"', ori_response)
+            if quotes_match:
+                extracted_text = quotes_match.group(1)
+                return LLMResponse(
+                    state=LLMState.ANSWER,
+                    output=f"Extracted from malformed response: {extracted_text}",
+                    ori_response=ori_response
+                )
+        
+        # Fallback to error message
+        return LLMResponse(
+            state=LLMState.ANSWER,
+            output="Sorry, I couldn't process the response properly. Please try rephrasing your question.",
+            ori_response=ori_response
+        )
+    
+    def _handle_call_fallback(self, response: LLMResponse, context: dict) -> LLMResponse:
+        """Handle call error fallback."""
+        # Use cached response if available
+        cached_response = context.get("cached_response")
+        if cached_response:
+            return LLMResponse(
+                state=LLMState.ANSWER,
+                output=f"Using cached response: {cached_response}",
+                ori_response=""
+            )
+        
+        # Default error message
+        return LLMResponse(
+            state=LLMState.ANSWER,
+            output="I'm experiencing technical difficulties. Please try again in a few moments.",
+            ori_response=""
+        )
+
+# Usage
+fallback_strategy = LLMFallbackStrategy()
+
+# Simulate failed response
+failed_response = LLMResponse(
+    state=LLMState.ERROR_PARSE,
+    output="JSON parsing failed",
+    ori_response='{"content": "This is the actual response", invalid_json}'
+)
+
+# Apply fallback
+recovered_response = fallback_strategy.apply_fallback(failed_response)
+print(f"Recovered: {recovered_response.state.value} - {recovered_response.output}")
+```
+
+## Testing LLM Schemas
+
+```python
+import pytest
+from oxygent.schemas import LLMState, LLMResponse
+from pydantic import ValidationError
+
+class TestLLMSchemas:
+    """Test cases for LLM schemas."""
+    
+    def test_llm_state_values(self):
+        """Test LLMState enum values."""
+        assert LLMState.TOOL_CALL.value == "tool_call"
+        assert LLMState.ANSWER.value == "answer"
+        assert LLMState.ERROR_PARSE.value == "error_parse"
+        assert LLMState.ERROR_CALL.value == "error_call"
+    
+    def test_llm_response_creation(self):
+        """Test LLMResponse creation with different data types."""
+        # String output
+        response1 = LLMResponse(
+            state=LLMState.ANSWER,
+            output="This is a text response"
+        )
+        assert response1.output == "This is a text response"
+        assert response1.ori_response == ""
+        
+        # Dict output
+        response2 = LLMResponse(
+            state=LLMState.TOOL_CALL,
+            output={"tool": "search", "args": {"q": "test"}},
+            ori_response="original response"
+        )
+        assert isinstance(response2.output, dict)
+        assert response2.ori_response == "original response"
+    
+    def test_llm_response_validation(self):
+        """Test LLMResponse validation."""
+        # Valid response
+        valid_response = LLMResponse(
+            state=LLMState.ANSWER,
+            output="Valid response"
+        )
+        assert valid_response.state == LLMState.ANSWER
+        
+        # Invalid state should raise ValidationError
+        with pytest.raises(ValidationError):
+            LLMResponse(
+                state="invalid_state",
+                output="Response with invalid state"
+            )
+    
+    def test_response_state_transitions(self):
+        """Test response state handling in workflows."""
+        processor = LLMResponseProcessor()
+        
+        # Test tool call processing
+        tool_response = LLMResponse(
+            state=LLMState.TOOL_CALL,
+            output={"tool_name": "test_tool", "arguments": {}}
+        )
+        result = processor.process_response(tool_response)
+        assert result["status"] == "tool_executed"
+        
+        # Test answer processing
+        answer_response = LLMResponse(
+            state=LLMState.ANSWER,
+            output="This is an answer"
+        )
+        result = processor.process_response(answer_response)
+        assert result["status"] == "answer_received"
+```
+
+## Best Practices
+
+### 1. State-First Design
+
+Always check the state before processing output:
+
+```python
+from oxygent.schemas import LLMState, LLMResponse
+
+def process_llm_output(response: LLMResponse):
+    """Process LLM output based on state."""
+    # Good: Check state first
+    if response.state == LLMState.TOOL_CALL:
+        # Handle tool call
+        pass
+    elif response.state == LLMState.ANSWER:
+        # Handle answer
+        pass
+    # Handle errors appropriately
+```
+
+### 2. Preserve Original Response
+
+Always preserve the original response for debugging:
+
+```python
+from oxygent.schemas import LLMResponse, LLMState
+
+# Good: Preserve original response
+response = LLMResponse(
+    state=LLMState.ANSWER,
+    output="Processed output",
+    ori_response="Original LLM response content"
+)
+```
+
+### 3. Error Recovery
+
+Implement proper error recovery strategies:
+
+```python
+from oxygent.schemas import LLMState, LLMResponse
+
+def create_recovery_response(error_response: LLMResponse) -> LLMResponse:
+    """Create recovery response for errors."""
+    if error_response.state == LLMState.ERROR_PARSE:
+        # Try to salvage content
+        return attempt_content_recovery(error_response)
+    elif error_response.state == LLMState.ERROR_CALL:
+        # Use fallback mechanism
+        return create_fallback_response()
+    
+    return error_response
+```
+
+## Related Schemas
+
+- **[OxyResponse](./oxy)**: Core framework response schema
+- **[WebResponse](./web)**: Web API response schema
+- **[Memory](./memory)**: Chat message and memory management
+
+## See Also
+
+- [Schema Overview](./index)
+- [Agent Integration](../agents/overview)
+- [LLM Configuration](../llms/configuration)

@@ -1,0 +1,361 @@
+---
+title: BaseDB
+description: Foundation class for all database services providing robust retry mechanisms and error handling for database operations
+---
+
+# BaseDB
+
+The `BaseDB` class serves as the foundation for all database service implementations in the OxyGent framework. It provides a robust retry mechanism that automatically decorates all public methods of its subclasses with configurable retry functionality.
+
+## Overview
+
+`BaseDB` is designed to ensure reliable database operations by automatically handling transient failures through a sophisticated retry mechanism. When any class inherits from `BaseDB`, all of its public methods are automatically wrapped with retry logic, making database operations more resilient to temporary network issues, connection timeouts, and other transient errors.
+
+## Key Features
+
+- **Automatic Retry Decoration**: All public methods of subclasses are automatically wrapped with retry logic
+- **Configurable Retry Policy**: Customizable retry attempts and delays between attempts
+- **Seamless Integration**: Transparent retry mechanism that doesn't affect the original method signatures
+- **Error Handling**: Graceful handling of exceptions with configurable backoff strategies
+
+## Class Definition
+
+```python
+from oxygent.databases.base_db import BaseDB
+
+class MyDatabaseService(BaseDB):
+    async def fetch_data(self, query: str):
+        # This method will automatically have retry logic applied
+        # Your database implementation here
+        pass
+```
+
+## Core Methods
+
+### try_decorator(max_retries=1, delay_between_retries=0.1)
+
+A decorator factory that creates a retry mechanism for database operations.
+
+**Parameters**:
+- `max_retries` (int): Maximum number of retry attempts (default: 1)
+- `delay_between_retries` (float): Delay in seconds between retry attempts (default: 0.1)
+
+**Returns**: A decorator function that can be applied to async methods
+
+**Functionality**:
+- Wraps async methods with retry logic
+- Automatically retries failed operations up to the specified limit
+- Implements exponential backoff between retry attempts
+- Returns `None` if all retry attempts fail
+
+```python
+# Example of manual decorator usage (though automatic decoration is preferred)
+class CustomDB(BaseDB):
+    @BaseDB.try_decorator(max_retries=3, delay_between_retries=0.5)
+    async def critical_operation(self):
+        # This operation will retry up to 3 times with 0.5 second delays
+        pass
+```
+
+### __init_subclass__(cls, **kwargs)
+
+Class method automatically called when a class inherits from `BaseDB`.
+
+**Parameters**:
+- `cls`: The subclass being created
+- `**kwargs`: Additional keyword arguments passed to the parent class
+
+**Functionality**:
+- Automatically iterates over all attributes of the subclass
+- Identifies callable methods that are not magic methods (don't start with underscore)
+- Applies the retry decorator with default parameters to all public methods
+- Ensures seamless retry functionality without manual decoration
+
+```python
+class DatabaseService(BaseDB):
+    # These methods will automatically get retry decoration
+    async def connect(self):
+        pass
+    
+    async def query(self, sql: str):
+        pass
+    
+    async def insert(self, data: dict):
+        pass
+    
+    # This method will NOT get retry decoration (starts with underscore)
+    async def _internal_helper(self):
+        pass
+```
+
+## Usage Examples
+
+### Basic Database Service
+
+```python
+from oxygent.databases.base_db import BaseDB
+import asyncio
+
+class SimpleDatabase(BaseDB):
+    def __init__(self, connection_string: str):
+        self.connection_string = connection_string
+        self.connected = False
+    
+    async def connect(self):
+        """Connect to the database - automatically has retry logic."""
+        if not self.connected:
+            # Simulate connection logic that might fail
+            await asyncio.sleep(0.1)
+            self.connected = True
+            print("Connected to database")
+    
+    async def fetch_user(self, user_id: int):
+        """Fetch user data - automatically has retry logic."""
+        if not self.connected:
+            raise Exception("Not connected to database")
+        
+        # Simulate data fetching that might fail
+        return {"id": user_id, "name": f"User {user_id}"}
+    
+    async def update_user(self, user_id: int, data: dict):
+        """Update user data - automatically has retry logic."""
+        if not self.connected:
+            raise Exception("Not connected to database")
+        
+        # Simulate update operation
+        print(f"Updated user {user_id} with data: {data}")
+
+# Usage
+async def main():
+    db = SimpleDatabase("postgresql://localhost/mydb")
+    await db.connect()  # Will retry on failure
+    user = await db.fetch_user(123)  # Will retry on failure
+    await db.update_user(123, {"name": "John Doe"})  # Will retry on failure
+
+asyncio.run(main())
+```
+
+### Advanced Database Service with Custom Configuration
+
+```python
+class AdvancedDatabase(BaseDB):
+    def __init__(self, config: dict):
+        self.config = config
+        self.connection_pool = None
+    
+    async def initialize_pool(self):
+        """Initialize connection pool - benefits from automatic retry."""
+        print("Initializing connection pool...")
+        # Connection pool initialization logic
+        self.connection_pool = "mock_pool"
+    
+    async def execute_transaction(self, operations: list):
+        """Execute multiple operations in a transaction - benefits from automatic retry."""
+        if not self.connection_pool:
+            raise Exception("Connection pool not initialized")
+        
+        print(f"Executing transaction with {len(operations)} operations")
+        # Transaction logic here
+        return {"status": "success", "operations_count": len(operations)}
+    
+    async def get_connection_stats(self):
+        """Get connection pool statistics - benefits from automatic retry."""
+        return {
+            "active_connections": 5,
+            "idle_connections": 10,
+            "total_connections": 15
+        }
+```
+
+### Subclass with Mixed Methods
+
+```python
+class MixedMethodsDB(BaseDB):
+    def __init__(self):
+        self.cache = {}
+    
+    # Public method - gets automatic retry decoration
+    async def fetch_data(self, key: str):
+        if key in self.cache:
+            return self.cache[key]
+        
+        # Simulate external data fetch that might fail
+        data = f"data_for_{key}"
+        self.cache[key] = data
+        return data
+    
+    # Public method - gets automatic retry decoration  
+    async def clear_cache(self):
+        self.cache.clear()
+        print("Cache cleared")
+    
+    # Private method - does NOT get retry decoration
+    async def _internal_cache_cleanup(self):
+        # Internal helper method
+        expired_keys = []
+        # Cleanup logic
+        return expired_keys
+    
+    # Magic method - does NOT get retry decoration
+    async def __aenter__(self):
+        return self
+    
+    # Magic method - does NOT get retry decoration
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        await self.clear_cache()
+```
+
+## Retry Mechanism Details
+
+### How Automatic Decoration Works
+
+1. **Subclass Detection**: When a class inherits from `BaseDB`, the `__init_subclass__` method is automatically called
+2. **Method Identification**: The system iterates over all class attributes and identifies callable methods
+3. **Filtering**: Only methods that don't start with underscore (public methods) are selected for decoration
+4. **Decoration**: Each selected method is wrapped with the retry decorator using default parameters
+5. **Replacement**: The original method is replaced with the decorated version
+
+### Retry Logic Flow
+
+```python
+# For each decorated method, the retry logic follows this pattern:
+async def decorated_method(*args, **kwargs):
+    retries = 0
+    while retries < max_retries:
+        try:
+            return await original_method(*args, **kwargs)
+        except Exception:
+            retries += 1
+            if retries < max_retries:
+                await asyncio.sleep(delay_between_retries)
+    
+    # If all retries failed
+    return None
+```
+
+### Default Retry Configuration
+
+- **Maximum Retries**: 1 (one retry attempt after initial failure)
+- **Delay Between Retries**: 0.1 seconds
+- **Exception Handling**: Catches all exceptions and retries
+- **Final Return**: Returns `None` if all retries are exhausted
+
+## Architecture Integration
+
+### Database Service Pattern
+
+The `BaseDB` class follows the database service pattern commonly used in the OxyGent framework:
+
+```
+BaseDB (Foundation)
+  ├── ElasticsearchDB Services
+  ├── RedisDB Services  
+  ├── VectorDB Services
+  └── Custom Database Services
+```
+
+### Error Resilience Strategy
+
+The automatic retry mechanism provides several layers of resilience:
+
+1. **Transient Error Recovery**: Automatically handles temporary network issues
+2. **Connection Recovery**: Helps with database connection drops and reconnections
+3. **Load Balancing Support**: Works well with load-balanced database clusters
+4. **Graceful Degradation**: Returns `None` instead of crashing when all retries fail
+
+## Best Practices
+
+### 1. Design Methods for Idempotency
+
+Since methods may be retried, ensure they are idempotent:
+
+```python
+class SafeDatabase(BaseDB):
+    async def create_user_if_not_exists(self, user_data: dict):
+        # Idempotent operation - safe to retry
+        existing_user = await self.find_user(user_data['email'])
+        if not existing_user:
+            return await self.create_user(user_data)
+        return existing_user
+```
+
+### 2. Handle Return Values Appropriately
+
+Remember that methods return `None` when all retries fail:
+
+```python
+class RobustDatabase(BaseDB):
+    async def fetch_critical_data(self, id: str):
+        result = await self.get_data(id)  # May return None on failure
+        if result is None:
+            # Handle the failure case appropriately
+            raise Exception(f"Failed to fetch critical data for ID: {id}")
+        return result
+```
+
+### 3. Use Private Methods for Internal Logic
+
+Keep internal helper methods private to avoid unnecessary retry decoration:
+
+```python
+class OptimizedDatabase(BaseDB):
+    async def process_batch(self, items: list):
+        # Public method - gets retry decoration
+        processed = []
+        for item in items:
+            result = await self._process_single_item(item)
+            processed.append(result)
+        return processed
+    
+    async def _process_single_item(self, item):
+        # Private method - no retry decoration needed for internal logic
+        return {"processed": item, "timestamp": "2024-09-01"}
+```
+
+### 4. Consider Custom Retry Policies for Critical Operations
+
+For operations that need different retry behavior, consider manual decoration:
+
+```python
+class CustomRetryDatabase(BaseDB):
+    @BaseDB.try_decorator(max_retries=5, delay_between_retries=1.0)
+    async def critical_backup_operation(self):
+        # This method needs more aggressive retry policy
+        pass
+```
+
+## Related Classes
+
+- **[Base ES](./base-es)**: Elasticsearch database service extending BaseDB
+- **[Base Redis](./base-redis)**: Redis database service extending BaseDB  
+- **[Base Vector DB](./base-vector-db)**: Vector database service extending BaseDB
+
+## Error Handling Considerations
+
+### Silent Failure Mode
+
+The current implementation returns `None` when all retries fail, which provides a "silent failure" mode. Consider the implications:
+
+```python
+# This might mask errors
+result = await db.fetch_data("key")  # Returns None on failure
+if result:  # Only processes if successful
+    process_result(result)
+
+# Alternative: explicit error handling
+try:
+    result = await db.fetch_data("key")
+    if result is None:
+        raise Exception("Database operation failed after retries")
+    process_result(result)
+except Exception as e:
+    logger.error(f"Database operation failed: {e}")
+```
+
+## See Also
+
+- [Database Services Overview](./index)
+- [Elasticsearch Services](./base-es)
+- [Redis Services](./base-redis)
+- [Vector Database Services](./base-vector-db)
+- [Configuration Management](../config)

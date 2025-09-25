@@ -1,0 +1,804 @@
+---
+title: JesEs
+description: Production-ready Elasticsearch client implementation with authentication, connection pooling, and full ES functionality
+---
+
+# JesEs
+
+The `JesEs` class provides a production-ready implementation of the Elasticsearch interface, connecting to real Elasticsearch clusters with full authentication support, connection pooling, and comprehensive error handling.
+
+## Overview
+
+`JesEs` is designed for production environments where you need to interact with actual Elasticsearch clusters. It provides:
+
+- **Real Elasticsearch Integration**: Direct connection to ES clusters
+- **Authentication Support**: HTTP basic authentication with username/password
+- **Connection Pooling**: Configurable connection pool for optimal performance
+- **Timeout Management**: Configurable request timeouts
+- **Production-grade Features**: Full Elasticsearch API support
+- **Error Handling**: Robust error handling with automatic retries from BaseDB
+
+## Class Definition
+
+```python
+from oxygent.databases.db_es.jes_es import JesEs
+
+# Initialize with connection parameters
+es = JesEs(
+    hosts=["http://localhost:9200"],
+    user="elastic",
+    password="changeme",
+    maxsize=200,
+    timeout=20
+)
+```
+
+## Constructor
+
+### __init__(hosts, user, password, maxsize=200, timeout=20)
+
+Initializes the JesEs instance with Elasticsearch connection parameters.
+
+**Parameters**:
+- `hosts` (list): List of Elasticsearch host URLs
+- `user` (str): Username for HTTP basic authentication
+- `password` (str): Password for HTTP basic authentication
+- `maxsize` (int, optional): Maximum number of connections in the pool (default: 200)
+- `timeout` (int, optional): Request timeout in seconds (default: 20)
+
+**Behavior**:
+- Creates `AsyncElasticsearch` client with specified configuration
+- Sets up HTTP basic authentication
+- Configures connection pooling and timeout settings
+- Logs errors and sets client to None if initialization fails
+
+```python
+# Basic initialization
+es = JesEs(
+    hosts=["http://elasticsearch:9200"],
+    user="admin",
+    password="secret123"
+)
+
+# Advanced configuration
+es = JesEs(
+    hosts=[
+        "http://es-node-1:9200",
+        "http://es-node-2:9200", 
+        "http://es-node-3:9200"
+    ],
+    user="app_user",
+    password="complex_password",
+    maxsize=500,  # Higher connection pool for heavy load
+    timeout=30    # Longer timeout for complex queries
+)
+```
+
+## Core Methods
+
+All methods inherit automatic retry functionality from BaseDB and delegate to the underlying AsyncElasticsearch client.
+
+### async create_index(index_name: str, body: dict) -> dict
+
+Creates a new index in Elasticsearch with comprehensive validation.
+
+**Parameters**:
+- `index_name` (str): Name of the index to create
+- `body` (dict): Index configuration including mappings, settings, aliases
+
+**Returns**: Elasticsearch response with creation details or `None` if index exists
+
+**Behavior**:
+- Validates index name is not empty or whitespace-only
+- Validates configuration body is not empty
+- Checks if index already exists before creation
+- Only creates new indices (prevents accidental overwrites)
+
+```python
+# Complex index configuration
+index_config = {
+    "settings": {
+        "number_of_shards": 3,
+        "number_of_replicas": 1,
+        "analysis": {
+            "analyzer": {
+                "custom_analyzer": {
+                    "type": "custom",
+                    "tokenizer": "standard",
+                    "filter": ["lowercase", "stop"]
+                }
+            }
+        }
+    },
+    "mappings": {
+        "properties": {
+            "title": {
+                "type": "text",
+                "analyzer": "custom_analyzer"
+            },
+            "timestamp": {
+                "type": "date",
+                "format": "strict_date_optional_time"
+            },
+            "user_id": {
+                "type": "keyword"
+            },
+            "tags": {
+                "type": "keyword"
+            },
+            "content": {
+                "type": "text",
+                "fields": {
+                    "raw": {"type": "keyword"}
+                }
+            }
+        }
+    },
+    "aliases": {
+        "current_logs": {}
+    }
+}
+
+try:
+    result = await es.create_index("application_logs", index_config)
+    if result:
+        print("Index created successfully")
+    else:
+        print("Index already exists")
+except ValueError as e:
+    print(f"Invalid parameters: {e}")
+```
+
+### async index(index_name, doc_id, body)
+
+Indexes a document in Elasticsearch (create or replace).
+
+**Parameters**:
+- `index_name` (str): Target index name
+- `doc_id` (str): Unique document identifier  
+- `body` (dict): Document content to index
+
+**Returns**: Elasticsearch indexing response
+
+**Behavior**:
+- Delegates directly to `AsyncElasticsearch.index()`
+- Supports document creation and updates
+- Handles version conflicts and routing
+
+```python
+# Simple document indexing
+document = {
+    "user_id": "user_12345",
+    "action": "login",
+    "timestamp": "2024-09-01T10:00:00Z",
+    "ip_address": "192.168.1.100",
+    "user_agent": "Mozilla/5.0...",
+    "metadata": {
+        "session_id": "sess_abcd1234",
+        "referrer": "https://app.example.com/dashboard"
+    }
+}
+
+result = await es.index("user_activity", "activity_001", document)
+
+# Response example:
+# {
+#   "_index": "user_activity",
+#   "_id": "activity_001",
+#   "_version": 1,
+#   "result": "created",
+#   "_shards": {"total": 2, "successful": 2, "failed": 0}
+# }
+```
+
+### async update(index_name, doc_id, body)
+
+Updates an existing document with partial data.
+
+**Parameters**:
+- `index_name` (str): Target index name
+- `doc_id` (str): Document identifier to update
+- `body` (dict): Fields to update (merged with existing document)
+
+**Returns**: Elasticsearch update response
+
+**Behavior**:
+- Wraps update data in `{"doc": body}` format required by ES
+- Supports partial document updates
+- Can be configured for upserts and scripted updates
+
+```python
+# Partial document update
+updates = {
+    "last_seen": "2024-09-01T10:30:00Z",
+    "login_count": 15,
+    "status": "active"
+}
+
+result = await es.update("user_activity", "activity_001", updates)
+
+# The update is automatically wrapped as:
+# {
+#   "doc": {
+#     "last_seen": "2024-09-01T10:30:00Z",
+#     "login_count": 15,
+#     "status": "active"
+#   }
+# }
+
+# Response example:
+# {
+#   "_index": "user_activity",
+#   "_id": "activity_001", 
+#   "_version": 2,
+#   "result": "updated"
+# }
+```
+
+### async search(index_name, body)
+
+Executes search queries against Elasticsearch indices.
+
+**Parameters**:
+- `index_name` (str): Index to search (supports wildcards and multiple indices)
+- `body` (dict): Complete search query with filters, aggregations, sorting
+
+**Returns**: Full Elasticsearch search response with hits, aggregations, etc.
+
+**Behavior**:
+- Delegates to `AsyncElasticsearch.search()`
+- Supports full Elasticsearch Query DSL
+- Handles complex aggregations, highlighting, and suggestions
+
+```python
+# Complex search with aggregations
+search_query = {
+    "query": {
+        "bool": {
+            "must": [
+                {
+                    "range": {
+                        "timestamp": {
+                            "gte": "2024-09-01T00:00:00Z",
+                            "lte": "2024-09-01T23:59:59Z"
+                        }
+                    }
+                }
+            ],
+            "filter": [
+                {"term": {"status": "active"}},
+                {"terms": {"action": ["login", "logout", "view_page"]}}
+            ]
+        }
+    },
+    "aggregations": {
+        "actions_per_hour": {
+            "date_histogram": {
+                "field": "timestamp",
+                "calendar_interval": "1h"
+            }
+        },
+        "top_users": {
+            "terms": {
+                "field": "user_id",
+                "size": 10
+            }
+        }
+    },
+    "sort": [
+        {"timestamp": {"order": "desc"}},
+        {"user_id": {"order": "asc"}}
+    ],
+    "size": 100,
+    "from": 0
+}
+
+results = await es.search("user_activity", search_query)
+
+# Process results
+hits = results["hits"]["hits"]
+total_hits = results["hits"]["total"]["value"]
+aggregations = results["aggregations"]
+
+print(f"Found {total_hits} matching documents")
+for hit in hits:
+    doc = hit["_source"]
+    print(f"User {doc['user_id']} performed {doc['action']} at {doc['timestamp']}")
+```
+
+### async exists(index_name, doc_id)
+
+Checks if a specific document exists in the index.
+
+**Parameters**:
+- `index_name` (str): Index to check
+- `doc_id` (str): Document ID to verify
+
+**Returns**: Boolean indicating document existence
+
+**Behavior**:
+- Efficiently checks existence without retrieving document content
+- Uses Elasticsearch HEAD request for optimal performance
+
+```python
+# Check before conditional operations
+doc_exists = await es.exists("user_activity", "activity_001")
+
+if doc_exists:
+    # Update existing document
+    await es.update("user_activity", "activity_001", updates)
+else:
+    # Create new document
+    await es.index("user_activity", "activity_001", new_document)
+
+# Batch existence checking
+doc_ids = ["activity_001", "activity_002", "activity_003"]
+existence_results = {}
+for doc_id in doc_ids:
+    existence_results[doc_id] = await es.exists("user_activity", doc_id)
+
+print("Document existence:", existence_results)
+```
+
+### async close()
+
+Closes the Elasticsearch client connection and releases resources.
+
+**Returns**: Result of the close operation
+
+**Behavior**:
+- Properly closes all active connections
+- Releases connection pool resources
+- Should be called when the ES client is no longer needed
+
+```python
+try:
+    # Perform all ES operations
+    await es.create_index("logs", config)
+    await es.index("logs", "doc1", data)
+    results = await es.search("logs", query)
+finally:
+    # Always clean up
+    await es.close()
+```
+
+## Advanced Usage Examples
+
+### Production Application Integration
+
+```python
+import os
+from typing import Optional
+from oxygent.databases.db_es.jes_es import JesEs
+
+class ProductionESService:
+    def __init__(self):
+        self.es: Optional[JesEs] = None
+        
+    async def initialize(self):
+        """Initialize ES connection from environment variables."""
+        hosts = os.getenv("ES_HOST_LIST", "http://localhost:9200").split(",")
+        user = os.getenv("ES_USER", "elastic")
+        password = os.getenv("ES_PASSWORD", "changeme")
+        
+        # Production settings
+        self.es = JesEs(
+            hosts=hosts,
+            user=user,
+            password=password,
+            maxsize=300,  # Large connection pool
+            timeout=30    # Generous timeout
+        )
+        
+        if self.es.client is None:
+            raise Exception("Failed to initialize Elasticsearch client")
+    
+    async def setup_application_indices(self):
+        """Setup all required indices for the application."""
+        indices_config = {
+            "user_activity": {
+                "settings": {"number_of_shards": 3, "number_of_replicas": 1},
+                "mappings": {
+                    "properties": {
+                        "user_id": {"type": "keyword"},
+                        "action": {"type": "keyword"},
+                        "timestamp": {"type": "date"},
+                        "metadata": {"type": "object"}
+                    }
+                }
+            },
+            "application_logs": {
+                "settings": {"number_of_shards": 5, "number_of_replicas": 1},
+                "mappings": {
+                    "properties": {
+                        "level": {"type": "keyword"},
+                        "message": {"type": "text"},
+                        "timestamp": {"type": "date"},
+                        "service": {"type": "keyword"}
+                    }
+                }
+            }
+        }
+        
+        for index_name, config in indices_config.items():
+            try:
+                result = await self.es.create_index(index_name, config)
+                if result:
+                    print(f"Created index: {index_name}")
+                else:
+                    print(f"Index already exists: {index_name}")
+            except Exception as e:
+                print(f"Failed to create index {index_name}: {e}")
+    
+    async def log_user_activity(self, user_id: str, action: str, metadata: dict):
+        """Log user activity with automatic ID generation."""
+        import uuid
+        from datetime import datetime
+        
+        doc_id = str(uuid.uuid4())
+        document = {
+            "user_id": user_id,
+            "action": action,
+            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "metadata": metadata
+        }
+        
+        return await self.es.index("user_activity", doc_id, document)
+    
+    async def get_user_activity_summary(self, user_id: str, days: int = 7):
+        """Get activity summary for a user over the last N days."""
+        from datetime import datetime, timedelta
+        
+        end_date = datetime.utcnow()
+        start_date = end_date - timedelta(days=days)
+        
+        query = {
+            "query": {
+                "bool": {
+                    "must": [
+                        {"term": {"user_id": user_id}},
+                        {
+                            "range": {
+                                "timestamp": {
+                                    "gte": start_date.isoformat() + "Z",
+                                    "lte": end_date.isoformat() + "Z"
+                                }
+                            }
+                        }
+                    ]
+                }
+            },
+            "aggregations": {
+                "actions_count": {
+                    "terms": {"field": "action", "size": 20}
+                },
+                "daily_activity": {
+                    "date_histogram": {
+                        "field": "timestamp",
+                        "calendar_interval": "1d"
+                    }
+                }
+            },
+            "size": 0  # Only aggregations, no individual hits
+        }
+        
+        return await self.es.search("user_activity", query)
+    
+    async def cleanup(self):
+        """Clean up ES connections."""
+        if self.es:
+            await self.es.close()
+```
+
+### Bulk Operations Helper
+
+```python
+class BulkESOperations:
+    def __init__(self, es: JesEs):
+        self.es = es
+    
+    async def bulk_index_documents(self, index_name: str, documents: list):
+        """Index multiple documents efficiently."""
+        from elasticsearch.helpers import async_bulk
+        
+        # Prepare documents for bulk indexing
+        bulk_docs = []
+        for doc_id, doc_body in documents:
+            bulk_docs.append({
+                "_index": index_name,
+                "_id": doc_id,
+                "_source": doc_body
+            })
+        
+        # Use elasticsearch-py bulk helper
+        success_count, failed_docs = await async_bulk(
+            self.es.client,
+            bulk_docs,
+            chunk_size=500,
+            max_chunk_bytes=10 * 1024 * 1024  # 10MB chunks
+        )
+        
+        return {"success": success_count, "failed": len(failed_docs)}
+    
+    async def bulk_update_documents(self, index_name: str, updates: list):
+        """Update multiple documents efficiently."""
+        from elasticsearch.helpers import async_bulk
+        
+        bulk_updates = []
+        for doc_id, update_body in updates:
+            bulk_updates.append({
+                "_op_type": "update",
+                "_index": index_name,
+                "_id": doc_id,
+                "doc": update_body
+            })
+        
+        success_count, failed_docs = await async_bulk(
+            self.es.client,
+            bulk_updates,
+            chunk_size=500
+        )
+        
+        return {"success": success_count, "failed": len(failed_docs)}
+```
+
+### Health Monitoring and Diagnostics
+
+```python
+class ESHealthMonitor:
+    def __init__(self, es: JesEs):
+        self.es = es
+    
+    async def check_cluster_health(self):
+        """Check overall cluster health."""
+        try:
+            health = await self.es.client.cluster.health()
+            return {
+                "status": health["status"],
+                "cluster_name": health["cluster_name"],
+                "number_of_nodes": health["number_of_nodes"],
+                "active_primary_shards": health["active_primary_shards"],
+                "active_shards": health["active_shards"],
+                "unassigned_shards": health["unassigned_shards"]
+            }
+        except Exception as e:
+            return {"error": str(e), "status": "unreachable"}
+    
+    async def get_index_stats(self, index_name: str):
+        """Get detailed statistics for an index."""
+        try:
+            stats = await self.es.client.indices.stats(index=index_name)
+            index_stats = stats["indices"][index_name]
+            
+            return {
+                "document_count": index_stats["total"]["docs"]["count"],
+                "store_size_bytes": index_stats["total"]["store"]["size_in_bytes"],
+                "indexing_total": index_stats["total"]["indexing"]["index_total"],
+                "search_total": index_stats["total"]["search"]["query_total"]
+            }
+        except Exception as e:
+            return {"error": str(e)}
+    
+    async def diagnose_performance(self, index_name: str):
+        """Run performance diagnostics."""
+        # Check index health
+        index_stats = await self.get_index_stats(index_name)
+        
+        # Run a simple query to measure response time
+        import time
+        start_time = time.time()
+        
+        try:
+            await self.es.search(index_name, {
+                "query": {"match_all": {}},
+                "size": 1
+            })
+            query_time = time.time() - start_time
+        except Exception as e:
+            query_time = -1
+        
+        return {
+            "index_stats": index_stats,
+            "query_response_time_ms": query_time * 1000,
+            "cluster_health": await self.check_cluster_health()
+        }
+```
+
+## Error Handling and Recovery
+
+### Connection Error Handling
+
+```python
+async def robust_es_operation(es: JesEs, operation_func, *args, **kwargs):
+    """Wrapper for robust ES operations with fallback logic."""
+    try:
+        return await operation_func(*args, **kwargs)
+    except Exception as e:
+        error_type = type(e).__name__
+        error_msg = str(e)
+        
+        # Log the error with context
+        logger.error(f"ES operation failed: {error_type} - {error_msg}")
+        
+        # Handle specific error types
+        if "ConnectionError" in error_type:
+            logger.warning("ES cluster unreachable, implementing fallback")
+            return None
+        elif "RequestError" in error_type:
+            logger.error(f"Invalid request to ES: {error_msg}")
+            raise ValueError(f"Invalid ES request: {error_msg}")
+        elif "AuthenticationException" in error_type:
+            logger.error("ES authentication failed")
+            raise PermissionError("ES authentication failed")
+        else:
+            # Re-raise unknown errors
+            raise
+```
+
+### Circuit Breaker Pattern
+
+```python
+class ESCircuitBreaker:
+    def __init__(self, failure_threshold: int = 5, recovery_timeout: int = 60):
+        self.failure_threshold = failure_threshold
+        self.recovery_timeout = recovery_timeout
+        self.failure_count = 0
+        self.last_failure_time = 0
+        self.state = "CLOSED"  # CLOSED, OPEN, HALF_OPEN
+    
+    async def call(self, es_operation):
+        """Execute ES operation with circuit breaker protection."""
+        import time
+        
+        if self.state == "OPEN":
+            if time.time() - self.last_failure_time > self.recovery_timeout:
+                self.state = "HALF_OPEN"
+            else:
+                raise Exception("Circuit breaker is OPEN - ES operations suspended")
+        
+        try:
+            result = await es_operation()
+            # Success - reset failure count
+            if self.state == "HALF_OPEN":
+                self.state = "CLOSED"
+            self.failure_count = 0
+            return result
+            
+        except Exception as e:
+            self.failure_count += 1
+            self.last_failure_time = time.time()
+            
+            if self.failure_count >= self.failure_threshold:
+                self.state = "OPEN"
+                logger.warning("Circuit breaker opened due to repeated ES failures")
+            
+            raise e
+```
+
+## Configuration and Environment Setup
+
+### Environment Variables
+
+```bash
+# Elasticsearch cluster configuration
+export ES_HOST_LIST="http://es-node1:9200,http://es-node2:9200,http://es-node3:9200"
+export ES_USER="application_user"
+export ES_PASSWORD="secure_password_123"
+
+# Optional: SSL/TLS configuration
+export ES_USE_SSL="true"
+export ES_VERIFY_CERTS="true"
+export ES_CA_CERTS="/path/to/ca.pem"
+
+# Performance tuning
+export ES_MAX_CONNECTIONS="500"
+export ES_REQUEST_TIMEOUT="30"
+```
+
+### Dynamic Configuration
+
+```python
+class ESConfigManager:
+    @staticmethod
+    def create_es_client() -> JesEs:
+        """Create ES client from configuration."""
+        config = {
+            "hosts": os.getenv("ES_HOST_LIST", "http://localhost:9200").split(","),
+            "user": os.getenv("ES_USER", "elastic"),
+            "password": os.getenv("ES_PASSWORD", "changeme"),
+            "maxsize": int(os.getenv("ES_MAX_CONNECTIONS", "200")),
+            "timeout": int(os.getenv("ES_REQUEST_TIMEOUT", "20"))
+        }
+        
+        return JesEs(**config)
+    
+    @staticmethod
+    def validate_connection(es: JesEs) -> bool:
+        """Validate ES connection is working."""
+        try:
+            # Simple health check
+            import asyncio
+            loop = asyncio.get_event_loop()
+            health = loop.run_until_complete(es.client.cluster.health())
+            return health["status"] in ["green", "yellow"]
+        except Exception:
+            return False
+```
+
+## Testing and Development
+
+### Test Helper Class
+
+```python
+class ESTestHelper:
+    def __init__(self, test_index_prefix: str = "test_"):
+        self.test_index_prefix = test_index_prefix
+        self.created_indices = []
+    
+    async def create_test_index(self, es: JesEs, index_name: str, config: dict):
+        """Create a test index with automatic cleanup tracking."""
+        full_index_name = f"{self.test_index_prefix}{index_name}"
+        result = await es.create_index(full_index_name, config)
+        if result:
+            self.created_indices.append(full_index_name)
+        return full_index_name
+    
+    async def cleanup_test_indices(self, es: JesEs):
+        """Clean up all created test indices."""
+        for index_name in self.created_indices:
+            try:
+                await es.client.indices.delete(index=index_name)
+                print(f"Deleted test index: {index_name}")
+            except Exception as e:
+                print(f"Failed to delete test index {index_name}: {e}")
+        
+        self.created_indices.clear()
+```
+
+## Performance Optimization
+
+### Connection Pool Tuning
+
+```python
+# For high-throughput applications
+high_performance_es = JesEs(
+    hosts=es_hosts,
+    user=es_user,
+    password=es_password,
+    maxsize=1000,      # Large connection pool
+    timeout=60         # Longer timeout for complex operations
+)
+
+# For memory-constrained environments  
+lightweight_es = JesEs(
+    hosts=es_hosts,
+    user=es_user,
+    password=es_password,
+    maxsize=50,        # Smaller connection pool
+    timeout=10         # Shorter timeout
+)
+```
+
+### Query Optimization
+
+```python
+async def optimized_search(es: JesEs, index_name: str, user_id: str):
+    """Example of optimized search query."""
+    return await es.search(index_name, {
+        "query": {
+            "term": {"user_id": user_id}  # Use term for exact matches
+        },
+        "_source": ["action", "timestamp"],  # Only fetch needed fields
+        "sort": [{"timestamp": {"order": "desc"}}],
+        "size": 20,  # Reasonable page size
+        "timeout": "5s"  # Query timeout
+    })
+```
+
+## See Also
+
+- [BaseEs](./base-es) - Abstract base class interface
+- [LocalEs](./local-es) - File-based development implementation
+- [BaseDB](./base-db) - Parent class providing retry mechanisms
+- [Elasticsearch Official Documentation](https://www.elastic.co/guide/en/elasticsearch/reference/current/index.html)
+- [Database Services Overview](./index) - Complete database services documentation

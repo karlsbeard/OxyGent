@@ -1,0 +1,366 @@
+---
+title: Color Schema
+description: Enum schema for terminal color representation in the OxyGent framework
+---
+
+# Color Schema
+
+The `Color` enum provides a standardized way to represent terminal colors in the OxyGent framework. This schema is used for consistent color representation across terminal outputs and logging systems.
+
+## Overview
+
+The `Color` enum defines the available colors for terminal display using Python's `enum.auto()` functionality for automatic value assignment. This ensures consistent color codes throughout the application.
+
+## Import
+
+```python
+from oxygent.schemas import Color
+```
+
+## Enum Definition
+
+### Color
+
+An enumeration class that represents terminal colors using automatic value assignment.
+
+```python
+from enum import Enum, auto
+
+class Color(Enum):
+    DEFAULT = auto()
+    BLACK = auto()
+    RED = auto()
+    GREEN = auto()
+    YELLOW = auto()
+    BLUE = auto()
+    MAGENTA = auto()
+    CYAN = auto()
+    WHITE = auto()
+```
+
+## Available Colors
+
+| Color | Description |
+|-------|-------------|
+| `DEFAULT` | System default terminal color |
+| `BLACK` | Black color |
+| `RED` | Red color |
+| `GREEN` | Green color |
+| `YELLOW` | Yellow color |
+| `BLUE` | Blue color |
+| `MAGENTA` | Magenta color |
+| `CYAN` | Cyan color |
+| `WHITE` | White color |
+
+## Usage Examples
+
+### Basic Usage
+
+```python
+from oxygent.schemas import Color
+
+# Access color values
+default_color = Color.DEFAULT
+error_color = Color.RED
+success_color = Color.GREEN
+warning_color = Color.YELLOW
+info_color = Color.BLUE
+```
+
+### Color Comparison
+
+```python
+from oxygent.schemas import Color
+
+def get_log_color(level: str) -> Color:
+    """Get appropriate color for log level."""
+    color_mapping = {
+        "ERROR": Color.RED,
+        "WARNING": Color.YELLOW,
+        "INFO": Color.BLUE,
+        "SUCCESS": Color.GREEN,
+        "DEBUG": Color.CYAN,
+    }
+    return color_mapping.get(level.upper(), Color.DEFAULT)
+
+# Usage
+error_color = get_log_color("ERROR")
+if error_color == Color.RED:
+    print("Using red color for error messages")
+```
+
+### Iterating Over Colors
+
+```python
+from oxygent.schemas import Color
+
+# List all available colors
+for color in Color:
+    print(f"Color: {color.name}, Value: {color.value}")
+
+# Output:
+# Color: DEFAULT, Value: 1
+# Color: BLACK, Value: 2
+# Color: RED, Value: 3
+# Color: GREEN, Value: 4
+# Color: YELLOW, Value: 5
+# Color: BLUE, Value: 6
+# Color: MAGENTA, Value: 7
+# Color: CYAN, Value: 8
+# Color: WHITE, Value: 9
+```
+
+### Terminal Output Integration
+
+```python
+from oxygent.schemas import Color
+
+class TerminalFormatter:
+    """Example terminal formatter using Color enum."""
+    
+    ANSI_CODES = {
+        Color.DEFAULT: "\033[0m",
+        Color.BLACK: "\033[30m",
+        Color.RED: "\033[31m",
+        Color.GREEN: "\033[32m",
+        Color.YELLOW: "\033[33m",
+        Color.BLUE: "\033[34m",
+        Color.MAGENTA: "\033[35m",
+        Color.CYAN: "\033[36m",
+        Color.WHITE: "\033[37m",
+    }
+    
+    @classmethod
+    def format_text(cls, text: str, color: Color) -> str:
+        """Format text with specified color."""
+        ansi_code = cls.ANSI_CODES.get(color, cls.ANSI_CODES[Color.DEFAULT])
+        reset_code = cls.ANSI_CODES[Color.DEFAULT]
+        return f"{ansi_code}{text}{reset_code}"
+
+# Usage
+formatter = TerminalFormatter()
+error_text = formatter.format_text("Error occurred", Color.RED)
+success_text = formatter.format_text("Operation successful", Color.GREEN)
+```
+
+## Integration with Logging
+
+The Color enum is typically used in conjunction with logging systems to provide colored terminal output:
+
+```python
+import logging
+from oxygent.schemas import Color
+
+class ColoredLogger:
+    """Example colored logger implementation."""
+    
+    COLOR_MAPPING = {
+        logging.ERROR: Color.RED,
+        logging.WARNING: Color.YELLOW,
+        logging.INFO: Color.BLUE,
+        logging.DEBUG: Color.CYAN,
+    }
+    
+    def __init__(self, name: str):
+        self.logger = logging.getLogger(name)
+        self.formatter = TerminalFormatter()
+    
+    def log(self, level: int, message: str):
+        """Log message with appropriate color."""
+        color = self.COLOR_MAPPING.get(level, Color.DEFAULT)
+        formatted_message = self.formatter.format_text(message, color)
+        self.logger.log(level, formatted_message)
+
+# Usage
+logger = ColoredLogger("oxygent")
+logger.log(logging.ERROR, "This is an error message")
+logger.log(logging.INFO, "This is an info message")
+```
+
+## Properties and Methods
+
+### Enum Properties
+
+Each Color enum member has the following properties:
+
+- **name**: String name of the color (e.g., "RED", "GREEN")
+- **value**: Auto-generated integer value (1, 2, 3, etc.)
+
+```python
+from oxygent.schemas import Color
+
+color = Color.RED
+print(f"Name: {color.name}")      # Name: RED
+print(f"Value: {color.value}")    # Value: 3
+```
+
+### Enum Methods
+
+Standard enum methods are available:
+
+```python
+from oxygent.schemas import Color
+
+# Get all color names
+color_names = [color.name for color in Color]
+print(color_names)  # ['DEFAULT', 'BLACK', 'RED', 'GREEN', ...]
+
+# Check if a color exists
+if hasattr(Color, 'RED'):
+    print("RED color is available")
+
+# Get color by name
+red_color = Color['RED']
+print(red_color)  # Color.RED
+```
+
+## Best Practices
+
+### 1. Consistent Color Usage
+
+Use predefined color constants for consistent terminal output:
+
+```python
+from oxygent.schemas import Color
+
+# Good: Use enum values
+ERROR_COLOR = Color.RED
+SUCCESS_COLOR = Color.GREEN
+WARNING_COLOR = Color.YELLOW
+
+# Avoid: Magic numbers or strings
+# error_color = 3  # Not recommended
+# success_color = "green"  # Not recommended
+```
+
+### 2. Color-Blind Friendly Design
+
+Consider accessibility when choosing colors:
+
+```python
+from oxygent.schemas import Color
+
+class AccessibleColors:
+    """Accessible color choices for terminal output."""
+    
+    # High contrast combinations
+    ERROR = Color.RED      # High contrast for errors
+    SUCCESS = Color.GREEN  # Universally recognizable
+    INFO = Color.BLUE     # Neutral information color
+    WARNING = Color.YELLOW # Attention-grabbing
+    
+    # Alternative combinations for color-blind users
+    ALTERNATIVE_ERROR = Color.MAGENTA
+    ALTERNATIVE_SUCCESS = Color.CYAN
+```
+
+### 3. Fallback Handling
+
+Always provide fallback for unsupported terminals:
+
+```python
+from oxygent.schemas import Color
+import os
+
+def get_display_color(color: Color) -> Color:
+    """Get color with terminal capability check."""
+    # Check if terminal supports colors
+    if not os.getenv('TERM') or os.getenv('NO_COLOR'):
+        return Color.DEFAULT
+    return color
+
+# Usage
+display_color = get_display_color(Color.RED)
+```
+
+## Common Use Cases
+
+### 1. Log Level Coloring
+
+```python
+from oxygent.schemas import Color
+import logging
+
+LOG_COLORS = {
+    logging.CRITICAL: Color.MAGENTA,
+    logging.ERROR: Color.RED,
+    logging.WARNING: Color.YELLOW,
+    logging.INFO: Color.BLUE,
+    logging.DEBUG: Color.CYAN,
+}
+
+def get_log_color(level: int) -> Color:
+    """Get color for logging level."""
+    return LOG_COLORS.get(level, Color.DEFAULT)
+```
+
+### 2. Status Indicators
+
+```python
+from oxygent.schemas import Color
+from enum import Enum
+
+class TaskStatus(Enum):
+    RUNNING = "running"
+    COMPLETED = "completed" 
+    FAILED = "failed"
+    PAUSED = "paused"
+
+STATUS_COLORS = {
+    TaskStatus.RUNNING: Color.BLUE,
+    TaskStatus.COMPLETED: Color.GREEN,
+    TaskStatus.FAILED: Color.RED,
+    TaskStatus.PAUSED: Color.YELLOW,
+}
+
+def get_status_color(status: TaskStatus) -> Color:
+    """Get color for task status."""
+    return STATUS_COLORS.get(status, Color.DEFAULT)
+```
+
+### 3. CLI Output Formatting
+
+```python
+from oxygent.schemas import Color
+
+class CLIOutput:
+    """Command-line interface output helper."""
+    
+    @staticmethod
+    def success(message: str) -> str:
+        """Format success message."""
+        return TerminalFormatter.format_text(f"✓ {message}", Color.GREEN)
+    
+    @staticmethod
+    def error(message: str) -> str:
+        """Format error message."""
+        return TerminalFormatter.format_text(f"✗ {message}", Color.RED)
+    
+    @staticmethod
+    def warning(message: str) -> str:
+        """Format warning message."""
+        return TerminalFormatter.format_text(f"⚠ {message}", Color.YELLOW)
+    
+    @staticmethod
+    def info(message: str) -> str:
+        """Format info message."""
+        return TerminalFormatter.format_text(f"ℹ {message}", Color.BLUE)
+
+# Usage
+print(CLIOutput.success("Operation completed successfully"))
+print(CLIOutput.error("Failed to connect to server"))
+print(CLIOutput.warning("Configuration file not found"))
+print(CLIOutput.info("Processing 100 items"))
+```
+
+## Related Schemas
+
+- **[WebResponse](./web)**: Web API response schema with status codes
+- **[LLMResponse](./llm)**: LLM response schema with state management
+- **[OxyResponse](./oxy)**: Core response schema with state tracking
+
+## See Also
+
+- [Schema Overview](./index)
+- [Logging Configuration](../utils/logging)
+- [Terminal Utilities](../utils/terminal)

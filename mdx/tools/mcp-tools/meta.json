@@ -1,0 +1,29 @@
+{
+  "title": "MCP Tools",
+  "pages": [
+    {
+      "title": "Overview",
+      "url": "/tools/mcp-tools"
+    },
+    {
+      "title": "BaseMCPClient",
+      "url": "/tools/mcp-tools/base-mcp-client"
+    },
+    {
+      "title": "StdioMCPClient",
+      "url": "/tools/mcp-tools/stdio-mcp-client"
+    },
+    {
+      "title": "SSEMCPClient", 
+      "url": "/tools/mcp-tools/sse-mcp-client"
+    },
+    {
+      "title": "StreamableMCPClient",
+      "url": "/tools/mcp-tools/streamable-mcp-client"
+    },
+    {
+      "title": "MCPTool",
+      "url": "/tools/mcp-tools/mcp-tool"
+    }
+  ]
+}

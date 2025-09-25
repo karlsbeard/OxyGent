@@ -1,0 +1,646 @@
+---
+title: Common Utils
+description: Essential utility functions for system operations, file processing, data transformation, and URL manipulation
+---
+
+# Common Utils
+
+The `common_utils` module provides a comprehensive collection of utility functions essential for various system operations, file processing, data transformation, and URL manipulation throughout the OxyGent framework.
+
+## Overview
+
+This module contains utility functions organized into several categories:
+
+- **System Information**: Platform detection and system metadata
+- **File Processing**: Image, video, table, and document processing with base64 encoding
+- **Data Transformation**: JSON extraction, data serialization, and type conversion
+- **URL Operations**: URL building and manipulation utilities
+- **Tree Structures**: Hierarchical data printing and visualization
+- **Attachment Processing**: Multi-format file attachment handling
+
+## Import Statement
+
+```python
+from oxygent.utils.common_utils import (
+    # System utilities
+    is_linux, get_mac_address, get_timestamp, get_format_time,
+    
+    # File processing
+    image_to_base64, video_to_base64, table_to_base64, file_to_base64,
+    
+    # Data utilities
+    extract_first_json, extract_json_str, chunk_list,
+    
+    # URL utilities
+    build_url, append_url_path,
+    
+    # Other utilities
+    print_tree, process_attachments
+)
+```
+
+## System Information Functions
+
+### is_linux()
+
+Detects if the current system is Linux-based.
+
+**Returns:**
+- `bool`: `True` if running on Linux, `False` otherwise
+
+**Example:**
+```python
+if is_linux():
+    print("Running on Linux")
+else:
+    print("Running on different OS")
+```
+
+### get_mac_address()
+
+Retrieves the MAC address of the current machine.
+
+**Returns:**
+- `str`: Formatted MAC address (e.g., "aa-bb-cc-dd-ee-ff")
+
+**Example:**
+```python
+mac = get_mac_address()
+print(f"MAC Address: {mac}")
+# Output: MAC Address: aa-bb-cc-dd-ee-ff
+```
+
+### get_timestamp()
+
+Gets the current timestamp as a string.
+
+**Returns:**
+- `str`: Current timestamp in seconds since epoch
+
+**Example:**
+```python
+timestamp = get_timestamp()
+print(f"Current timestamp: {timestamp}")
+# Output: Current timestamp: 1693834567.123456
+```
+
+### get_format_time()
+
+Returns formatted current time with nanosecond precision.
+
+**Returns:**
+- `str`: Formatted time string (YYYY-MM-DD HH:MM:SS.nnnnnnnnn)
+
+**Example:**
+```python
+formatted_time = get_format_time()
+print(f"Formatted time: {formatted_time}")
+# Output: Formatted time: 2024-09-03 14:30:45.123456789
+```
+
+## File Processing Functions
+
+### async image_to_base64(source: str, max_image_pixels: int = 10000000) -> str
+
+Converts images to base64 data URI format with automatic resizing.
+
+**Parameters:**
+- `source` (str): File path or HTTP URL to the image
+- `max_image_pixels` (int, optional): Maximum allowed pixels. Defaults to 10,000,000
+
+**Returns:**
+- `str`: Base64 data URI string
+
+**Features:**
+- Automatic image resizing if pixel count exceeds maximum
+- Supports both local files and HTTP URLs
+- Maintains aspect ratio during resizing
+- Uses LANCZOS resampling for quality
+
+**Example:**
+```python
+import asyncio
+
+async def process_image():
+    # From local file
+    base64_data = await image_to_base64("/path/to/image.jpg")
+    
+    # From URL with custom max pixels
+    base64_data = await image_to_base64(
+        "https://example.com/image.png", 
+        max_image_pixels=5000000
+    )
+    return base64_data
+
+# Usage
+base64_image = asyncio.run(process_image())
+```
+
+### async video_to_base64(source: str, max_video_size: int = 536870912) -> str
+
+Converts videos to base64 data URI format with size validation.
+
+**Parameters:**
+- `source` (str): File path or HTTP URL to the video
+- `max_video_size` (int, optional): Maximum file size in bytes. Defaults to 512MB
+
+**Returns:**
+- `str`: Base64 data URI string or original source if too large
+
+**Example:**
+```python
+async def process_video():
+    base64_data = await video_to_base64("/path/to/video.mp4")
+    if base64_data.startswith("data:video"):
+        print("Video converted to base64")
+    else:
+        print("Video too large, returned original path")
+
+asyncio.run(process_video())
+```
+
+### async table_to_base64(source: str, max_table_size: int = 52428800) -> str
+
+Converts table files (Excel, CSV, etc.) to base64 data URI format.
+
+**Parameters:**
+- `source` (str): File path or HTTP URL to the table file
+- `max_table_size` (int, optional): Maximum file size in bytes. Defaults to 50MB
+
+**Returns:**
+- `str`: Base64 data URI string with appropriate MIME type
+
+**Supported Formats:**
+- Excel: `.xlsx`, `.xls`
+- CSV: `.csv`, `.tsv`
+- OpenDocument: `.ods`
+
+**Example:**
+```python
+async def process_table():
+    try:
+        base64_data = await table_to_base64("/path/to/data.xlsx")
+        print("Table file converted successfully")
+        return base64_data
+    except ValueError as e:
+        print(f"Error: {e}")
+
+asyncio.run(process_table())
+```
+
+### async file_to_base64(source: str, max_file_size: int = 10485760) -> str
+
+Generic file converter to base64 with automatic MIME type detection.
+
+**Parameters:**
+- `source` (str): File path or HTTP URL
+- `max_file_size` (int, optional): Maximum file size in bytes. Defaults to 10MB
+
+**Returns:**
+- `str`: Base64 data URI string or original source if too large
+
+**Example:**
+```python
+async def process_file():
+    # Small files get converted
+    result = await file_to_base64("/path/to/document.pdf")
+    
+    # Large files return original path
+    if result.startswith("data:"):
+        print("File converted to base64")
+    else:
+        print("File too large, using original path")
+
+asyncio.run(process_file())
+```
+
+## Table File Utilities
+
+### validate_table_file(file_path: str) -> bool
+
+Validates if a file has a supported table format extension.
+
+**Parameters:**
+- `file_path` (str): Path to the file
+
+**Returns:**
+- `bool`: `True` if file extension is supported
+
+**Supported Extensions:**
+- `.xlsx`, `.xls`, `.csv`, `.tsv`, `.ods`
+
+**Example:**
+```python
+is_valid = validate_table_file("data.xlsx")  # True
+is_valid = validate_table_file("data.txt")   # False
+```
+
+### get_table_file_info(file_path: str) -> dict
+
+Retrieves metadata about a table file.
+
+**Parameters:**
+- `file_path` (str): Path to the file or HTTP URL
+
+**Returns:**
+- `dict`: File information including filename, extension, size, and validation status
+
+**Example:**
+```python
+info = get_table_file_info("/path/to/data.xlsx")
+print(info)
+# Output: {
+#   'filename': 'data.xlsx',
+#   'extension': 'xlsx',
+#   'size': 1024768,
+#   'is_supported': True
+# }
+```
+
+## Data Processing Functions
+
+### extract_first_json(text: str) -> str
+
+Extracts the first JSON object from text, handling markdown code blocks.
+
+**Parameters:**
+- `text` (str): Input text potentially containing JSON
+
+**Returns:**
+- `str`: Extracted JSON string
+
+**Example:**
+```python
+text = '''
+Here's the data:
+```json
+{"name": "example", "value": 123}
+```
+'''
+json_str = extract_first_json(text)
+print(json_str)  # Output: {"name": "example", "value": 123}
+```
+
+### extract_json_str(text: str) -> str
+
+Extracts JSON string using regex pattern matching.
+
+**Parameters:**
+- `text` (str): Input text containing JSON
+
+**Returns:**
+- `str`: Extracted JSON string
+
+**Raises:**
+- `ValueError`: If no JSON pattern is found
+
+**Example:**
+```python
+text = 'The result is {"status": "success", "data": [1,2,3]} and done.'
+json_str = extract_json_str(text)
+print(json_str)  # Output: {"status": "success", "data": [1,2,3]}
+```
+
+### chunk_list(lst: list, chunk_size: int = 2) -> list
+
+Divides a list into chunks of specified size.
+
+**Parameters:**
+- `lst` (list): Input list to chunk
+- `chunk_size` (int, optional): Size of each chunk. Defaults to 2
+
+**Returns:**
+- `list`: List of chunks
+
+**Example:**
+```python
+data = [1, 2, 3, 4, 5, 6, 7]
+chunks = chunk_list(data, chunk_size=3)
+print(chunks)  # Output: [[1, 2, 3], [4, 5, 6], [7]]
+```
+
+### to_json(obj: Any) -> str
+
+Converts an object to JSON string with UTF-8 support.
+
+**Parameters:**
+- `obj` (Any): Object to convert
+
+**Returns:**
+- `str`: JSON string representation
+
+**Features:**
+- UTF-8 encoding support
+- Handles non-serializable objects by converting to string
+- Returns original string if input is already a string
+
+**Example:**
+```python
+data = {"name": "测试", "date": datetime.now()}
+json_str = to_json(data)
+print(json_str)  # UTF-8 encoded JSON string
+```
+
+## URL Manipulation Functions
+
+### build_url(base_url: Union[AnyUrl, str], path: str = "", query_params: Dict[str, Any] = None) -> str
+
+Constructs URLs by combining base URL, path, and query parameters.
+
+**Parameters:**
+- `base_url` (Union[AnyUrl, str]): Base URL
+- `path` (str, optional): Path to append
+- `query_params` (Dict[str, Any], optional): Query parameters to add
+
+**Returns:**
+- `str`: Complete URL
+
+**Example:**
+```python
+url = build_url(
+    "https://api.example.com",
+    "v1/users",
+    {"page": 1, "limit": 10}
+)
+print(url)  # Output: https://api.example.com/v1/users?page=1&limit=10
+```
+
+### append_url_path(url: Union[AnyUrl, str], path: str) -> str
+
+Appends a path to an existing URL.
+
+**Parameters:**
+- `url` (Union[AnyUrl, str]): Base URL
+- `path` (str): Path to append
+
+**Returns:**
+- `str`: URL with appended path
+
+**Example:**
+```python
+new_url = append_url_path("https://api.example.com/v1", "users/123")
+print(new_url)  # Output: https://api.example.com/v1/users/123
+```
+
+## Data Serialization Functions
+
+### filter_json_types(d: dict) -> dict
+
+Filters dictionary to only include JSON-serializable types.
+
+**Parameters:**
+- `d` (dict): Input dictionary
+
+**Returns:**
+- `dict`: Dictionary with only JSON-serializable values
+
+**Example:**
+```python
+from datetime import datetime
+
+data = {
+    "string": "text",
+    "number": 42,
+    "date": datetime.now(),  # Non-serializable
+    "list": [1, 2, 3]
+}
+
+filtered = filter_json_types(data)
+print(filtered)
+# Output: {"string": "text", "number": 42, "date": "...", "list": [1, 2, 3]}
+```
+
+### msgpack_preprocess(obj: Any) -> Any
+
+Preprocesses objects for MessagePack serialization.
+
+**Parameters:**
+- `obj` (Any): Object to preprocess
+
+**Returns:**
+- `Any`: MessagePack-compatible object
+
+**Features:**
+- Converts tuples and sets to lists
+- Converts non-string dict keys to strings
+- Handles nested structures recursively
+- Converts unsupported types to strings
+
+**Example:**
+```python
+data = {
+    ("tuple", "key"): "value",
+    "set": {1, 2, 3},
+    "datetime": datetime.now()
+}
+
+processed = msgpack_preprocess(data)
+# Result is MessagePack-compatible
+```
+
+## Utility Functions
+
+### get_md5(arg_str: str) -> str
+
+Generates MD5 hash of a string.
+
+**Parameters:**
+- `arg_str` (str): Input string
+
+**Returns:**
+- `str`: MD5 hash hexdigest
+
+**Example:**
+```python
+hash_value = get_md5("hello world")
+print(hash_value)  # Output: 5d41402abc4b2a76b9719d911017c592
+```
+
+### print_tree(node: dict, prefix: str = "", is_root: bool = True, is_last: bool = True, logger = None)
+
+Prints hierarchical tree structures in a formatted way.
+
+**Parameters:**
+- `node` (dict): Node dictionary with 'name' and 'children' keys
+- `prefix` (str, optional): Current line prefix
+- `is_root` (bool, optional): Whether this is the root node
+- `is_last` (bool, optional): Whether this is the last sibling
+- `logger` (optional): Logger instance for output
+
+**Node Structure:**
+```python
+node = {
+    "name": "Root",
+    "children": [
+        {
+            "name": "Child 1",
+            "children": []
+        },
+        {
+            "name": "Child 2", 
+            "children": [
+                {"name": "Grandchild", "children": []}
+            ]
+        }
+    ]
+}
+```
+
+**Example:**
+```python
+tree_data = {
+    "name": "Project",
+    "children": [
+        {"name": "src", "children": []},
+        {"name": "docs", "children": [
+            {"name": "api.md", "children": []},
+            {"name": "guide.md", "children": []}
+        ]}
+    ]
+}
+
+print_tree(tree_data)
+# Output:
+# Project
+# ├── src
+# └── docs
+#     ├── api.md
+#     └── guide.md
+```
+
+## Attachment Processing
+
+### process_attachments(attachments: List[str]) -> List[dict]
+
+Processes file attachments and categorizes them by type for multimodal processing.
+
+**Parameters:**
+- `attachments` (List[str]): List of file paths or URLs
+
+**Returns:**
+- `List[dict]`: List of attachment objects with type-specific metadata
+
+**Supported File Types:**
+- **Images**: `.png`, `.jpg`, `.jpeg`, `.gif`, `.bmp`, `.webp`, `.tiff`
+- **Videos**: `.mp4`, `.avi`, `.mov`, `.wmv`, `.flv`, `.webm`, `.mkv`
+- **Tables**: `.xlsx`, `.xls`, `.csv`, `.tsv`, `.ods`
+- **Documents**: `.doc`, `.docx`
+- **PDFs**: `.pdf`
+- **Code**: `.py`, `.md`, `.json`, `.txt`
+
+**Example:**
+```python
+files = [
+    "/path/to/image.jpg",
+    "https://example.com/data.xlsx",
+    "/path/to/document.pdf"
+]
+
+processed = process_attachments(files)
+print(processed)
+# Output: [
+#   {"type": "image_url", "image_url": {"url": "/path/to/image.jpg"}},
+#   {"type": "table_file", "table_file": {"url": "https://example.com/data.xlsx", "format": "xlsx"}},
+#   {"type": "pdf_file", "pdf_file": {"url": "/path/to/document.pdf", "format": "pdf"}}
+# ]
+```
+
+## Advanced Features
+
+### _compose_query_parts(original_query: Union[str, list, dict], attachments: List[str]) -> List[dict]
+
+Composes query parts in A2A (Any-to-Any) format for multimodal processing.
+
+**Parameters:**
+- `original_query` (Union[str, list, dict]): Original query data
+- `attachments` (List[str]): List of attachment paths/URLs
+
+**Returns:**
+- `List[dict]`: Composed query parts in A2A format
+
+**Example:**
+```python
+query = "Analyze this data"
+attachments = ["/path/to/chart.png", "https://example.com/data.csv"]
+
+parts = _compose_query_parts(query, attachments)
+# Returns structured parts for multimodal processing
+```
+
+## Error Handling
+
+The module includes robust error handling:
+
+- **File Operations**: Graceful handling of missing files and network errors
+- **Type Validation**: Comprehensive type checking and conversion
+- **Size Limits**: Automatic handling of oversized files
+- **Format Support**: Validation of supported file formats
+
+## Performance Considerations
+
+- **Async Operations**: File I/O operations use async/await for non-blocking execution
+- **Image Optimization**: Automatic resizing reduces memory usage
+- **Streaming**: Large file operations use streaming where possible
+- **Caching**: Built-in optimizations for repeated operations
+
+## Dependencies
+
+The module relies on several key libraries:
+
+- `aiofiles`: Async file operations
+- `httpx`: HTTP client for URL-based resources
+- `PIL (Pillow)`: Image processing
+- `pydantic`: Type validation and URL handling
+
+## Usage Examples
+
+### Complete Image Processing Workflow
+
+```python
+import asyncio
+from oxygent.utils.common_utils import image_to_base64, validate_table_file
+
+async def process_media_files():
+    # Process image with size optimization
+    image_data = await image_to_base64(
+        "https://example.com/large-image.jpg",
+        max_image_pixels=2000000
+    )
+    
+    # Validate and process table file
+    if validate_table_file("/path/to/data.xlsx"):
+        table_data = await table_to_base64("/path/to/data.xlsx")
+        return {"image": image_data, "table": table_data}
+    
+    return {"image": image_data}
+
+# Execute workflow
+result = asyncio.run(process_media_files())
+```
+
+### Multi-Format Attachment Processing
+
+```python
+from oxygent.utils.common_utils import process_attachments, get_table_file_info
+
+def handle_user_uploads(file_paths):
+    # Get file information
+    file_info = [get_table_file_info(path) for path in file_paths]
+    
+    # Process for multimodal usage
+    attachments = process_attachments(file_paths)
+    
+    return {
+        "file_info": file_info,
+        "processed_attachments": attachments
+    }
+
+# Example usage
+files = [
+    "/uploads/chart.png",
+    "/uploads/sales_data.xlsx", 
+    "/uploads/report.pdf"
+]
+
+result = handle_user_uploads(files)
+```

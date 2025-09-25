@@ -1,0 +1,1218 @@
+---
+title: Oxy Schema
+description: Core Pydantic models for request-response handling, state management, and agent orchestration in the OxyGent framework
+---
+
+# Oxy Schema
+
+The Oxy schema module contains the core Pydantic models that power the OxyGent framework's request-response system, agent orchestration, and state management. These schemas define the fundamental data structures for multi-agent communication, trace management, and execution workflow control.
+
+## Overview
+
+The Oxy schema consists of four main components:
+
+- **OxyState**: Enumeration defining execution states for nodes/agents
+- **OxyRequest**: Comprehensive request envelope for agent invocations
+- **OxyResponse**: Response object containing execution results and metadata
+- **OxyOutput**: Structured output with attachment support
+
+These schemas form the backbone of the OxyGent framework, enabling distributed agent communication, conversation tracking, and workflow orchestration.
+
+## Import
+
+```python
+from oxygent.schemas import OxyState, OxyRequest, OxyResponse, OxyOutput
+```
+
+## Dependencies
+
+The oxy module imports several utilities and configurations:
+
+```python
+from oxygent.config import Config
+import shortuuid
+from pydantic import BaseModel, Field
+```
+
+## Schema Definitions
+
+### OxyState
+
+An enumeration defining the possible execution states of nodes (agents/tools) in the system.
+
+```python
+from enum import Enum, auto
+
+class OxyState(Enum):
+    CREATED = auto()
+    RUNNING = auto()
+    COMPLETED = auto()
+    FAILED = auto()
+    PAUSED = auto()
+    SKIPPED = auto()
+    CANCELED = auto()
+```
+
+#### State Values
+
+| State | Description |
+|-------|-------------|
+| `CREATED` | Node has been created but not started |
+| `RUNNING` | Node is currently executing |
+| `COMPLETED` | Node execution completed successfully |
+| `FAILED` | Node execution failed with error |
+| `PAUSED` | Node execution is temporarily paused |
+| `SKIPPED` | Node execution was skipped |
+| `CANCELED` | Node execution was canceled |
+
+### OxyRequest
+
+The core request envelope for all multi-agent system (MAS) task invocations, containing comprehensive context and routing information.
+
+```python
+class OxyRequest(BaseModel):
+    # Request identification
+    request_id: str = Field(default_factory=lambda: shortuuid.ShortUUID().random(length=22))
+    group_id: str = Field(default_factory=lambda: shortuuid.ShortUUID().random(length=16))
+    
+    # Trace management
+    from_trace_id: Optional[str] = Field("")
+    current_trace_id: Optional[str] = Field(default_factory=lambda: shortuuid.ShortUUID().random(length=16))
+    reference_trace_id: Optional[str] = Field("")
+    root_trace_ids: list = Field(default_factory=list)
+    
+    # Call routing
+    caller: Optional[str] = Field("user")
+    callee: Optional[str] = Field("")
+    call_stack: List[str] = Field(default_factory=lambda: ["user"])
+    
+    # Node management
+    node_id: Optional[str] = Field("")
+    arguments: dict = Field(default_factory=dict)
+    
+    # Data sharing
+    shared_data: dict = Field(default_factory=dict)
+    group_data: dict = Field(default_factory=dict)
+    
+    # System references
+    mas: Optional[Any] = Field(None, repr=False)
+    
+    # Additional fields...
+```
+
+#### Key Field Categories
+
+##### Request Identification
+- **request_id**: Client-side identifier for request tracking and resumption
+- **group_id**: Static group identifier for trace trees
+- **input_md5**: MD5 hash of input for deduplication
+
+##### Trace Management
+- **from_trace_id**: Parent conversation node's trace ID
+- **current_trace_id**: Unique ID for this execution node
+- **reference_trace_id**: Reference to related trace
+- **root_trace_ids**: All root traces composing the session tree
+
+##### Call Routing
+- **caller**: Name of the oxy initiating the call
+- **callee**: Name of the oxy being called  
+- **call_stack**: Stack of caller names for nested calls
+- **caller_category**: Category of caller (user, agent, tool)
+- **callee_category**: Category of callee
+
+##### Node Management
+- **node_id**: Unique identifier for the current execution node
+- **arguments**: Call-specific parameters and user input
+- **father_node_id**: Parent node identifier
+- **pre_node_ids**: Previous node identifiers in workflow
+- **latest_node_ids**: Most recent node identifiers
+
+##### Data Sharing
+- **shared_data**: Scratch space shared within single request scope
+- **group_data**: Persistent data shared across session group
+- **parallel_dict**: Coordination data for parallel executions
+
+### OxyResponse
+
+Result object returned after oxy execution, containing state, output, and metadata.
+
+```python
+class OxyResponse(BaseModel):
+    state: OxyState
+    output: Any
+    extra: dict = Field(default_factory=dict)
+    oxy_request: Optional[OxyRequest] = Field(None)
+```
+
+#### Field Specifications
+
+##### state
+- **Type**: `OxyState`
+- **Required**: Yes
+- **Description**: Final execution state of the task
+- **Values**: See OxyState enum values above
+
+##### output
+- **Type**: `Any`
+- **Required**: Yes
+- **Description**: User-visible payload, result data, or error message
+- **Usage**: Can contain strings, objects, structured data, or OxyOutput instances
+
+##### extra
+- **Type**: `dict`
+- **Default**: `{}`
+- **Description**: Optional metadata such as tokens used, latency, debug info
+- **Examples**: `{"tokens": 150, "latency_ms": 230, "model": "gpt-4"}`
+
+##### oxy_request
+- **Type**: `Optional[OxyRequest]`
+- **Default**: `None`
+- **Description**: Echo of the originating request for logging and debugging
+
+### OxyOutput
+
+Structured output object with support for attachments and multimedia content.
+
+```python
+class OxyOutput(BaseModel):
+    result: Any
+    attachments: list = Field(default_factory=list)
+```
+
+#### Field Specifications
+
+##### result
+- **Type**: `Any`
+- **Required**: Yes
+- **Description**: Primary result data
+- **Usage**: Can contain text, objects, structured data
+
+##### attachments
+- **Type**: `list`
+- **Default**: `[]`
+- **Description**: List of attachment objects (images, files, etc.)
+- **Examples**: Images, documents, audio files, data visualizations
+
+## OxyRequest Methods
+
+### Properties
+
+#### session_name
+Generates session name from caller and callee.
+
+```python
+request = OxyRequest(caller="user", callee="search_agent")
+print(request.session_name)  # Output: "user__search_agent"
+```
+
+### System Integration Methods
+
+#### set_mas(mas)
+Sets the multi-agent system reference.
+
+#### get_oxy(oxy_name) -> Any
+Retrieves oxy instance by name from the MAS.
+
+#### has_oxy(oxy_name) -> bool
+Checks if oxy exists in the MAS.
+
+### Request Cloning and Modification
+
+#### clone_with(**kwargs) -> OxyRequest
+Creates a deep copy with selected fields overridden.
+
+```python
+original_request = OxyRequest(caller="user", arguments={"query": "hello"})
+new_request = original_request.clone_with(
+    callee="search_tool",
+    arguments={"query": "python asyncio"}
+)
+```
+
+### Execution Methods
+
+#### async retry_execute(oxy, oxy_request=None) -> OxyResponse
+Executes an oxy with automatic retry logic.
+
+**Parameters**:
+- `oxy`: The oxy instance to execute
+- `oxy_request`: Request to use (defaults to self)
+
+**Returns**: OxyResponse with COMPLETED or FAILED state
+
+```python
+# Automatic retries based on oxy.retries and oxy.delay
+response = await request.retry_execute(search_tool)
+```
+
+#### async call(**kwargs) -> OxyResponse
+Invokes another oxy or tool with permission checks and timeout handling.
+
+**Parameters**:
+- `**kwargs`: Fields to override in cloned request
+
+**Returns**: OxyResponse with execution results
+
+```python
+# Call search tool with query
+response = await request.call(
+    callee="search_web",
+    arguments={"query": "Python asyncio", "max_results": 5}
+)
+```
+
+#### async start() -> OxyResponse
+Initiates execution of the callee oxy.
+
+#### async send_message(message)
+Sends message through the MAS messaging system.
+
+### Data Management Methods
+
+#### Query Management
+```python
+# Set/get query data
+request.set_query("What is the weather?", master_level=False)
+query = request.get_query(master_level=False)
+
+# Work with structured query parts
+parts = request.get_query_parts(master_level=False)
+request.set_query_parts([{"part": {"content_type": "text/plain", "data": "Hello"}}])
+```
+
+#### Memory Management
+```python
+# Short-term memory
+request.set_short_memory([{"role": "user", "content": "Hello"}])
+memory = request.get_short_memory()
+has_memory = request.has_short_memory()
+```
+
+#### Arguments Management
+```python
+# Manage request arguments
+request.set_arguments("temperature", 0.7)
+temp = request.get_arguments("temperature")
+all_args = request.get_arguments()
+has_temp = request.has_arguments("temperature")
+```
+
+#### Shared Data Management
+```python
+# Request-scoped shared data
+request.set_shared_data("intermediate_result", {"score": 0.85})
+result = request.get_shared_data("intermediate_result")
+all_shared = request.get_shared_data()
+```
+
+#### Group Data Management
+```python
+# Session-scoped group data
+request.set_group_data("user_preferences", {"theme": "dark"})
+preferences = request.get_group_data("user_preferences")
+```
+
+#### Global Data Management
+```python
+# System-wide global data
+request.set_global_data("system_config", {"debug": True})
+config = request.get_global_data("system_config")
+```
+
+### Utility Methods
+
+#### get_request_id() -> str / set_request_id(request_id: str)
+Get or set the request ID.
+
+#### get_group_id() -> str / set_group_id(group_id: str)
+Get or set the group ID.
+
+#### async break_task()
+Cancels the current task and sends close message.
+
+## Usage Examples
+
+### Basic Request-Response Flow
+
+```python
+import asyncio
+from oxygent.schemas import OxyRequest, OxyResponse, OxyState
+
+# Create basic request
+request = OxyRequest(
+    callee="echo_agent",
+    arguments={"message": "Hello, OxyGent!"}
+)
+
+print(f"Request ID: {request.request_id}")
+print(f"Trace ID: {request.current_trace_id}")
+print(f"Session: {request.session_name}")
+
+# Simulate response
+response = OxyResponse(
+    state=OxyState.COMPLETED,
+    output="Echo: Hello, OxyGent!",
+    extra={"processing_time": 0.1}
+)
+
+print(f"Response state: {response.state.name}")
+print(f"Output: {response.output}")
+```
+
+### Agent Chain Communication
+
+```python
+from oxygent.schemas import OxyRequest, OxyResponse, OxyState, OxyOutput
+
+# Initial user request
+user_request = OxyRequest(
+    caller="user",
+    callee="orchestrator_agent",
+    arguments={
+        "query": "Find recent AI research papers and summarize key findings",
+        "max_papers": 5
+    }
+)
+
+# Orchestrator delegates to search agent
+search_request = user_request.clone_with(
+    caller="orchestrator_agent",
+    callee="search_agent",
+    arguments={
+        "query": "AI research papers 2024",
+        "sources": ["arxiv", "pubmed"],
+        "max_results": 5
+    }
+)
+
+# Search agent response with structured output
+search_response = OxyResponse(
+    state=OxyState.COMPLETED,
+    output=OxyOutput(
+        result={
+            "papers": [
+                {"title": "Advanced Neural Architectures", "url": "arxiv.org/1234"},
+                {"title": "Efficient Training Methods", "url": "arxiv.org/5678"}
+            ],
+            "total_found": 2
+        },
+        attachments=[
+            {"type": "pdf", "url": "cached_papers.pdf", "description": "Downloaded papers"}
+        ]
+    ),
+    extra={"search_time": 2.3, "api_calls": 3}
+)
+
+# Orchestrator delegates to summarization agent
+summary_request = user_request.clone_with(
+    caller="orchestrator_agent", 
+    callee="summarization_agent",
+    arguments={
+        "papers": search_response.output.result["papers"],
+        "focus": "key_findings"
+    }
+)
+
+print(f"Chain: {user_request.caller} -> {search_request.callee} -> {summary_request.callee}")
+```
+
+### Parallel Execution Coordination
+
+```python
+from oxygent.schemas import OxyRequest, OxyState
+import asyncio
+
+async def parallel_processing_example():
+    """Example of parallel task coordination."""
+    
+    # Main request
+    main_request = OxyRequest(
+        caller="user",
+        callee="parallel_coordinator", 
+        arguments={"task": "analyze_document", "document_url": "doc.pdf"}
+    )
+    
+    # Create parallel tasks with same parallel_id
+    parallel_id = "parallel_analysis_123"
+    
+    tasks = [
+        main_request.clone_with(
+            callee="text_extractor",
+            parallel_id=parallel_id,
+            arguments={"document_url": "doc.pdf", "extract_text": True}
+        ),
+        main_request.clone_with(
+            callee="image_extractor", 
+            parallel_id=parallel_id,
+            arguments={"document_url": "doc.pdf", "extract_images": True}
+        ),
+        main_request.clone_with(
+            callee="metadata_extractor",
+            parallel_id=parallel_id,
+            arguments={"document_url": "doc.pdf", "extract_metadata": True}
+        )
+    ]
+    
+    # Simulate parallel execution
+    print(f"Parallel ID: {parallel_id}")
+    print(f"Coordinating {len(tasks)} parallel tasks:")
+    
+    for i, task in enumerate(tasks):
+        print(f"  Task {i+1}: {task.callee}")
+        print(f"    Node ID: {task.node_id}")
+        print(f"    Arguments: {task.arguments}")
+    
+    # In real implementation, tasks would be executed concurrently
+    # results = await asyncio.gather(*[execute_task(task) for task in tasks])
+
+# asyncio.run(parallel_processing_example())
+```
+
+### Error Handling and State Management
+
+```python
+from oxygent.schemas import OxyRequest, OxyResponse, OxyState
+
+def handle_execution_states():
+    """Example of handling different execution states."""
+    
+    # Create request
+    request = OxyRequest(
+        callee="unstable_service",
+        arguments={"action": "process_data"}
+    )
+    
+    # Simulate different response states
+    responses = [
+        OxyResponse(
+            state=OxyState.COMPLETED,
+            output="Data processed successfully",
+            extra={"records_processed": 1000}
+        ),
+        OxyResponse(
+            state=OxyState.FAILED,
+            output="Connection timeout after 30 seconds",
+            extra={"error_code": "TIMEOUT", "retry_count": 3}
+        ),
+        OxyResponse(
+            state=OxyState.PAUSED,
+            output="Processing paused due to rate limit",
+            extra={"resume_after": "2024-01-01T12:00:00Z"}
+        ),
+        OxyResponse(
+            state=OxyState.SKIPPED,
+            output="Service temporarily unavailable, using cache",
+            extra={"cache_age": 3600}
+        )
+    ]
+    
+    for i, response in enumerate(responses):
+        print(f"\nResponse {i+1}:")
+        print(f"  State: {response.state.name}")
+        print(f"  Output: {response.output}")
+        print(f"  Extra: {response.extra}")
+        
+        # Handle based on state
+        if response.state == OxyState.COMPLETED:
+            print("  ✓ Processing successful")
+        elif response.state == OxyState.FAILED:
+            print("  ✗ Processing failed, may need retry")
+        elif response.state == OxyState.PAUSED:
+            print("  ⏸ Processing paused, can resume")
+        elif response.state == OxyState.SKIPPED:
+            print("  ⏭ Processing skipped, fallback used")
+
+handle_execution_states()
+```
+
+### Trace and Session Management
+
+```python
+from oxygent.schemas import OxyRequest
+import time
+
+def trace_management_example():
+    """Example of trace and session management."""
+    
+    # Root conversation
+    root_request = OxyRequest(
+        caller="user",
+        callee="chat_agent",
+        current_trace_id="trace_root_001",
+        root_trace_ids=["trace_root_001"],
+        arguments={"message": "Hello, I need help with Python"}
+    )
+    
+    # Agent delegates to search
+    search_request = root_request.clone_with(
+        caller="chat_agent",
+        callee="search_tool",
+        from_trace_id="trace_root_001", 
+        current_trace_id="trace_search_002",
+        root_trace_ids=["trace_root_001"],
+        arguments={"query": "Python tutorials", "max_results": 3}
+    )
+    
+    # Search tool delegates to web scraper
+    scraper_request = search_request.clone_with(
+        caller="search_tool",
+        callee="web_scraper",
+        from_trace_id="trace_search_002",
+        current_trace_id="trace_scraper_003", 
+        root_trace_ids=["trace_root_001"],
+        arguments={"urls": ["python.org", "realpython.com"]}
+    )
+    
+    print("Trace Hierarchy:")
+    print(f"Root: {root_request.current_trace_id}")
+    print(f"  └─ Search: {search_request.current_trace_id}")
+    print(f"     └─ Scraper: {scraper_request.current_trace_id}")
+    
+    print(f"\nSession Names:")
+    print(f"Root session: {root_request.session_name}")
+    print(f"Search session: {search_request.session_name}")
+    print(f"Scraper session: {scraper_request.session_name}")
+    
+    print(f"\nTrace Context:")
+    print(f"Root trace IDs: {scraper_request.root_trace_ids}")
+    print(f"Current trace: {scraper_request.current_trace_id}")
+    print(f"Parent trace: {scraper_request.from_trace_id}")
+
+trace_management_example()
+```
+
+### Data Sharing Between Agents
+
+```python
+from oxygent.schemas import OxyRequest
+
+def data_sharing_example():
+    """Example of data sharing across agent calls."""
+    
+    # Initial request with shared data
+    request = OxyRequest(
+        caller="user",
+        callee="workflow_agent",
+        arguments={"task": "process_user_data"},
+        shared_data={
+            "user_id": "user_123",
+            "session_context": {"theme": "dark", "language": "en"}
+        },
+        group_data={
+            "user_preferences": {"notifications": True},
+            "conversation_history": []
+        }
+    )
+    
+    # First agent adds to shared data
+    request.set_shared_data("step1_result", {"validation": "passed", "score": 0.95})
+    request.set_shared_data("processing_start", time.time())
+    
+    # Second agent accesses shared data
+    validation_result = request.get_shared_data("step1_result")
+    print(f"Step 1 validation: {validation_result}")
+    
+    # Agent updates group data (persistent across requests)
+    current_history = request.get_group_data("conversation_history")
+    current_history.append({
+        "timestamp": time.time(),
+        "action": "workflow_started",
+        "user_id": request.shared_data["user_id"]
+    })
+    request.set_group_data("conversation_history", current_history)
+    
+    # Agent accesses global system data
+    request.set_global_data("active_workflows", 
+                          request.get_global_data("active_workflows", 0) + 1)
+    
+    print(f"Shared data keys: {list(request.shared_data.keys())}")
+    print(f"Group data keys: {list(request.group_data.keys())}")
+    print(f"Active workflows: {request.get_global_data('active_workflows')}")
+
+data_sharing_example()
+```
+
+## Advanced Integration Patterns
+
+### Request Middleware Pattern
+
+```python
+from oxygent.schemas import OxyRequest, OxyResponse, OxyState
+from typing import Callable, Any
+import logging
+import time
+
+class RequestMiddleware:
+    """Middleware for request processing."""
+    
+    def __init__(self):
+        self.middlewares = []
+    
+    def add_middleware(self, middleware_func: Callable):
+        """Add middleware function."""
+        self.middlewares.append(middleware_func)
+    
+    async def process_request(self, request: OxyRequest) -> OxyRequest:
+        """Process request through middleware chain."""
+        for middleware in self.middlewares:
+            request = await middleware(request)
+        return request
+
+# Example middleware functions
+async def logging_middleware(request: OxyRequest) -> OxyRequest:
+    """Log request details."""
+    logging.info(f"Processing request: {request.callee}", extra={
+        "trace_id": request.current_trace_id,
+        "caller": request.caller,
+        "node_id": request.node_id
+    })
+    return request
+
+async def timing_middleware(request: OxyRequest) -> OxyRequest:
+    """Add timing information."""
+    request.set_shared_data("request_start_time", time.time())
+    return request
+
+async def validation_middleware(request: OxyRequest) -> OxyRequest:
+    """Validate request structure."""
+    if not request.callee:
+        raise ValueError("Request must specify callee")
+    
+    if not request.current_trace_id:
+        import shortuuid
+        request.current_trace_id = shortuuid.ShortUUID().random(length=16)
+    
+    return request
+
+# Usage
+middleware = RequestMiddleware()
+middleware.add_middleware(logging_middleware)
+middleware.add_middleware(timing_middleware)
+middleware.add_middleware(validation_middleware)
+
+# Process request through middleware
+# processed_request = await middleware.process_request(original_request)
+```
+
+### Response Aggregation Pattern
+
+```python
+from oxygent.schemas import OxyResponse, OxyState, OxyOutput
+from typing import List, Dict, Any
+
+class ResponseAggregator:
+    """Aggregate multiple responses into consolidated result."""
+    
+    @staticmethod
+    def aggregate_responses(responses: List[OxyResponse]) -> OxyResponse:
+        """Aggregate multiple responses."""
+        if not responses:
+            return OxyResponse(
+                state=OxyState.FAILED,
+                output="No responses to aggregate"
+            )
+        
+        # Analyze response states
+        states = [r.state for r in responses]
+        completed_count = sum(1 for s in states if s == OxyState.COMPLETED)
+        failed_count = sum(1 for s in states if s == OxyState.FAILED)
+        
+        # Determine overall state
+        if failed_count == 0:
+            overall_state = OxyState.COMPLETED
+        elif completed_count == 0:
+            overall_state = OxyState.FAILED
+        else:
+            overall_state = OxyState.COMPLETED  # Partial success
+        
+        # Aggregate outputs
+        aggregated_output = {
+            "total_responses": len(responses),
+            "completed": completed_count,
+            "failed": failed_count,
+            "results": []
+        }
+        
+        attachments = []
+        
+        for i, response in enumerate(responses):
+            result_entry = {
+                "response_index": i,
+                "state": response.state.name,
+                "output": response.output
+            }
+            
+            # Handle OxyOutput with attachments
+            if isinstance(response.output, OxyOutput):
+                result_entry["output"] = response.output.result
+                attachments.extend(response.output.attachments)
+            
+            aggregated_output["results"].append(result_entry)
+        
+        # Create aggregated response
+        if attachments:
+            final_output = OxyOutput(
+                result=aggregated_output,
+                attachments=attachments
+            )
+        else:
+            final_output = aggregated_output
+        
+        # Aggregate extra metadata
+        aggregated_extra = {
+            "individual_extras": [r.extra for r in responses],
+            "aggregation_timestamp": time.time()
+        }
+        
+        return OxyResponse(
+            state=overall_state,
+            output=final_output,
+            extra=aggregated_extra
+        )
+
+# Usage example
+responses = [
+    OxyResponse(state=OxyState.COMPLETED, output="Result 1", extra={"time": 1.2}),
+    OxyResponse(state=OxyState.COMPLETED, output="Result 2", extra={"time": 0.8}),
+    OxyResponse(state=OxyState.FAILED, output="Connection error", extra={"error": "timeout"})
+]
+
+aggregator = ResponseAggregator()
+consolidated = aggregator.aggregate_responses(responses)
+
+print(f"Aggregated state: {consolidated.state.name}")
+print(f"Aggregated output keys: {list(consolidated.output.keys())}")
+```
+
+### Request Context Manager
+
+```python
+from oxygent.schemas import OxyRequest, OxyResponse, OxyState
+from contextlib import asynccontextmanager
+import logging
+import time
+
+class RequestContext:
+    """Context manager for request lifecycle."""
+    
+    def __init__(self, request: OxyRequest):
+        self.request = request
+        self.start_time = None
+        self.logger = logging.getLogger(__name__)
+    
+    async def __aenter__(self):
+        """Enter context - setup request."""
+        self.start_time = time.time()
+        self.request.set_shared_data("context_start_time", self.start_time)
+        
+        self.logger.info(f"Starting request context", extra={
+            "trace_id": self.request.current_trace_id,
+            "callee": self.request.callee,
+            "node_id": self.request.node_id
+        })
+        
+        return self.request
+    
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        """Exit context - cleanup and logging."""
+        end_time = time.time()
+        duration = end_time - self.start_time
+        
+        self.request.set_shared_data("context_duration", duration)
+        
+        if exc_type:
+            self.logger.error(f"Request context failed", extra={
+                "trace_id": self.request.current_trace_id,
+                "duration": duration,
+                "error": str(exc_val)
+            })
+        else:
+            self.logger.info(f"Request context completed", extra={
+                "trace_id": self.request.current_trace_id,
+                "duration": duration
+            })
+
+# Usage
+async def execute_with_context():
+    request = OxyRequest(callee="example_agent")
+    
+    async with RequestContext(request) as ctx_request:
+        # Request processing happens here
+        # Context automatically handles timing and logging
+        
+        # Simulate processing
+        ctx_request.set_shared_data("processing_step", "validation")
+        # await some_processing(ctx_request)
+        
+        response = OxyResponse(
+            state=OxyState.COMPLETED,
+            output="Processing completed successfully"
+        )
+        
+        return response
+
+# await execute_with_context()
+```
+
+### State Machine Integration
+
+```python
+from oxygent.schemas import OxyState, OxyRequest, OxyResponse
+from enum import Enum
+from typing import Dict, Callable, Optional
+
+class WorkflowState(Enum):
+    """Extended workflow states."""
+    INITIALIZING = "initializing"
+    VALIDATING = "validating"
+    PROCESSING = "processing"
+    FINALIZING = "finalizing"
+    COMPLETED = "completed"
+    ERROR = "error"
+
+class WorkflowStateMachine:
+    """State machine for workflow management."""
+    
+    def __init__(self):
+        self.transitions: Dict[WorkflowState, Dict[WorkflowState, Callable]] = {
+            WorkflowState.INITIALIZING: {
+                WorkflowState.VALIDATING: self._initialize_to_validate,
+                WorkflowState.ERROR: self._to_error
+            },
+            WorkflowState.VALIDATING: {
+                WorkflowState.PROCESSING: self._validate_to_process,
+                WorkflowState.ERROR: self._to_error
+            },
+            WorkflowState.PROCESSING: {
+                WorkflowState.FINALIZING: self._process_to_finalize,
+                WorkflowState.ERROR: self._to_error
+            },
+            WorkflowState.FINALIZING: {
+                WorkflowState.COMPLETED: self._finalize_to_complete,
+                WorkflowState.ERROR: self._to_error
+            }
+        }
+    
+    def _initialize_to_validate(self, request: OxyRequest) -> OxyRequest:
+        """Transition from initialize to validate."""
+        request.set_shared_data("workflow_state", WorkflowState.VALIDATING.value)
+        request.set_shared_data("validation_start", time.time())
+        return request
+    
+    def _validate_to_process(self, request: OxyRequest) -> OxyRequest:
+        """Transition from validate to process."""
+        request.set_shared_data("workflow_state", WorkflowState.PROCESSING.value)
+        request.set_shared_data("processing_start", time.time())
+        return request
+    
+    def _process_to_finalize(self, request: OxyRequest) -> OxyRequest:
+        """Transition from process to finalize."""
+        request.set_shared_data("workflow_state", WorkflowState.FINALIZING.value)
+        request.set_shared_data("finalize_start", time.time())
+        return request
+    
+    def _finalize_to_complete(self, request: OxyRequest) -> OxyRequest:
+        """Transition from finalize to complete."""
+        request.set_shared_data("workflow_state", WorkflowState.COMPLETED.value)
+        request.set_shared_data("completion_time", time.time())
+        return request
+    
+    def _to_error(self, request: OxyRequest) -> OxyRequest:
+        """Transition to error state."""
+        request.set_shared_data("workflow_state", WorkflowState.ERROR.value)
+        request.set_shared_data("error_time", time.time())
+        return request
+    
+    def transition(self, request: OxyRequest, from_state: WorkflowState, 
+                   to_state: WorkflowState) -> Optional[OxyRequest]:
+        """Execute state transition."""
+        if from_state not in self.transitions:
+            return None
+        
+        if to_state not in self.transitions[from_state]:
+            return None
+        
+        transition_func = self.transitions[from_state][to_state]
+        return transition_func(request)
+    
+    def get_oxy_state_mapping(self, workflow_state: WorkflowState) -> OxyState:
+        """Map workflow state to OxyState."""
+        mapping = {
+            WorkflowState.INITIALIZING: OxyState.CREATED,
+            WorkflowState.VALIDATING: OxyState.RUNNING,
+            WorkflowState.PROCESSING: OxyState.RUNNING,
+            WorkflowState.FINALIZING: OxyState.RUNNING,
+            WorkflowState.COMPLETED: OxyState.COMPLETED,
+            WorkflowState.ERROR: OxyState.FAILED
+        }
+        return mapping.get(workflow_state, OxyState.CREATED)
+
+# Usage
+state_machine = WorkflowStateMachine()
+request = OxyRequest(callee="workflow_processor")
+
+# Initialize workflow
+current_state = WorkflowState.INITIALIZING
+request.set_shared_data("workflow_state", current_state.value)
+
+# Execute state transitions
+transitions = [
+    (WorkflowState.INITIALIZING, WorkflowState.VALIDATING),
+    (WorkflowState.VALIDATING, WorkflowState.PROCESSING),
+    (WorkflowState.PROCESSING, WorkflowState.FINALIZING),
+    (WorkflowState.FINALIZING, WorkflowState.COMPLETED)
+]
+
+for from_state, to_state in transitions:
+    request = state_machine.transition(request, from_state, to_state)
+    if request:
+        current_state = WorkflowState(request.get_shared_data("workflow_state"))
+        oxy_state = state_machine.get_oxy_state_mapping(current_state)
+        print(f"Transitioned to {current_state.value} (OxyState: {oxy_state.name})")
+    else:
+        print(f"Invalid transition: {from_state.value} -> {to_state.value}")
+```
+
+## Testing Oxy Schemas
+
+```python
+import pytest
+from oxygent.schemas import OxyState, OxyRequest, OxyResponse, OxyOutput
+import asyncio
+
+class TestOxySchemas:
+    """Test cases for Oxy schemas."""
+    
+    def test_oxy_state_enum(self):
+        """Test OxyState enum values."""
+        assert OxyState.CREATED != OxyState.RUNNING
+        assert OxyState.COMPLETED.name == "COMPLETED"
+        assert len(list(OxyState)) == 7
+    
+    def test_oxy_request_creation(self):
+        """Test OxyRequest creation and default values."""
+        request = OxyRequest(callee="test_agent")
+        
+        assert request.callee == "test_agent"
+        assert request.caller == "user"  # default
+        assert len(request.request_id) == 22  # shortuuid length
+        assert len(request.current_trace_id) == 16
+        assert request.call_stack == ["user"]
+        assert request.arguments == {}
+        assert request.shared_data == {}
+    
+    def test_oxy_request_clone_with(self):
+        """Test request cloning with modifications."""
+        original = OxyRequest(
+            caller="user",
+            callee="agent1",
+            arguments={"param": "value"}
+        )
+        
+        cloned = original.clone_with(
+            callee="agent2",
+            arguments={"param": "new_value", "extra": "data"}
+        )
+        
+        assert cloned.caller == "user"  # unchanged
+        assert cloned.callee == "agent2"  # changed
+        assert cloned.arguments["param"] == "new_value"  # changed
+        assert cloned.arguments["extra"] == "data"  # added
+        assert cloned.request_id != original.request_id  # deep copy creates new IDs
+    
+    def test_oxy_request_session_name(self):
+        """Test session name generation."""
+        request = OxyRequest(caller="agent_a", callee="agent_b")
+        assert request.session_name == "agent_a__agent_b"
+    
+    def test_oxy_request_data_management(self):
+        """Test data management methods."""
+        request = OxyRequest()
+        
+        # Test arguments
+        request.set_arguments("key1", "value1")
+        assert request.get_arguments("key1") == "value1"
+        assert request.has_arguments("key1") is True
+        assert request.has_arguments("nonexistent") is False
+        
+        # Test shared data
+        request.set_shared_data("shared_key", {"nested": "data"})
+        assert request.get_shared_data("shared_key")["nested"] == "data"
+        assert request.has_shared_data("shared_key") is True
+        
+        # Test query management
+        request.set_query("test query")
+        assert request.get_query() == "test query"
+        
+        # Test query parts
+        parts = request.get_query_parts()
+        assert len(parts) == 1
+        assert parts[0]["part"]["content_type"] == "text/plain"
+        assert parts[0]["part"]["data"] == "test query"
+    
+    def test_oxy_response_creation(self):
+        """Test OxyResponse creation."""
+        response = OxyResponse(
+            state=OxyState.COMPLETED,
+            output="Success result",
+            extra={"metadata": "value"}
+        )
+        
+        assert response.state == OxyState.COMPLETED
+        assert response.output == "Success result"
+        assert response.extra["metadata"] == "value"
+        assert response.oxy_request is None  # default
+    
+    def test_oxy_output_with_attachments(self):
+        """Test OxyOutput with attachments."""
+        output = OxyOutput(
+            result="Processing completed",
+            attachments=[
+                {"type": "image", "url": "image.jpg"},
+                {"type": "document", "path": "report.pdf"}
+            ]
+        )
+        
+        assert output.result == "Processing completed"
+        assert len(output.attachments) == 2
+        assert output.attachments[0]["type"] == "image"
+        assert output.attachments[1]["type"] == "document"
+    
+    def test_response_with_oxy_output(self):
+        """Test response containing OxyOutput."""
+        oxy_output = OxyOutput(
+            result={"data": "processed"},
+            attachments=[{"type": "chart", "data": "chart_data"}]
+        )
+        
+        response = OxyResponse(
+            state=OxyState.COMPLETED,
+            output=oxy_output
+        )
+        
+        assert isinstance(response.output, OxyOutput)
+        assert response.output.result["data"] == "processed"
+        assert len(response.output.attachments) == 1
+    
+    async def test_request_call_simulation(self):
+        """Test request call method simulation (without actual MAS)."""
+        request = OxyRequest(callee="caller_agent")
+        
+        # This would normally require MAS setup, so we test the clone_with logic
+        cloned_request = request.clone_with(
+            callee="target_tool",
+            arguments={"param": "value"}
+        )
+        
+        assert cloned_request.callee == "target_tool"
+        assert cloned_request.arguments["param"] == "value"
+        # In real scenario: response = await request.call(callee="target_tool", arguments={"param": "value"})
+```
+
+## Best Practices
+
+### 1. State Management
+
+Use appropriate states for different execution phases:
+
+```python
+from oxygent.schemas import OxyState, OxyResponse
+
+# Good: Use specific states
+response = OxyResponse(state=OxyState.COMPLETED, output="Success")
+error_response = OxyResponse(state=OxyState.FAILED, output="Error message")
+paused_response = OxyResponse(state=OxyState.PAUSED, output="Rate limited")
+
+# Track state transitions in logs
+def log_state_change(old_state: OxyState, new_state: OxyState, trace_id: str):
+    logging.info(f"State transition: {old_state.name} -> {new_state.name}", 
+                extra={"trace_id": trace_id})
+```
+
+### 2. Request Cloning
+
+Use clone_with for safe request modifications:
+
+```python
+from oxygent.schemas import OxyRequest
+
+# Good: Use clone_with for modifications
+original_request = OxyRequest(caller="user")
+modified_request = original_request.clone_with(
+    callee="target_agent",
+    arguments={"new_param": "value"}
+)
+
+# Avoid: Direct modification of shared request objects
+# original_request.callee = "target_agent"  # Can cause issues in concurrent scenarios
+```
+
+### 3. Data Scope Management
+
+Use appropriate data scopes for different use cases:
+
+```python
+# Request-scoped data (cleared after request)
+request.set_shared_data("temp_result", computation_result)
+
+# Session-scoped data (persists across requests in same group)
+request.set_group_data("user_context", user_preferences)
+
+# System-scoped data (global across all requests)
+request.set_global_data("system_metrics", performance_data)
+```
+
+### 4. Error Context
+
+Include rich context in error responses:
+
+```python
+from oxygent.schemas import OxyResponse, OxyState
+
+# Good: Rich error context
+error_response = OxyResponse(
+    state=OxyState.FAILED,
+    output="Database connection failed",
+    extra={
+        "error_code": "DB_CONN_TIMEOUT",
+        "host": "db.example.com",
+        "port": 5432,
+        "timeout_seconds": 30,
+        "retry_count": 3,
+        "last_success": "2024-01-01T10:30:00Z"
+    }
+)
+```
+
+### 5. Trace Management
+
+Maintain proper trace hierarchies:
+
+```python
+# Parent request
+parent_request = OxyRequest(
+    current_trace_id="parent_123",
+    root_trace_ids=["root_001"]
+)
+
+# Child request inherits and extends trace context
+child_request = parent_request.clone_with(
+    from_trace_id="parent_123",
+    current_trace_id="child_456", 
+    root_trace_ids=["root_001"]  # Preserve root context
+)
+```
+
+## Related Schemas
+
+- **[LLMResponse](./llm)**: LLM-specific response with state management
+- **[WebResponse](./web)**: HTTP-compatible response format
+- **[Observation](./observation)**: Execution result collection and tracking
+- **[Memory](./memory)**: Conversation and message management
+
+## See Also
+
+- [Schema Overview](./index)
+- [Agent System Architecture](../agents/architecture)
+- [Request-Response Patterns](../patterns/request-response)
+- [Multi-Agent Communication](../agents/communication)

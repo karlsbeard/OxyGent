@@ -1,0 +1,606 @@
+---
+title: BaseVectorDB
+description: Abstract base class defining the interface contract for all vector database service implementations
+---
+
+# BaseVectorDB
+
+The `BaseVectorDB` class is an abstract base class that defines the essential interface contract for all vector database service implementations in the OxyGent framework. It inherits from `BaseDB` to leverage automatic retry functionality while establishing a standardized API for vector database operations.
+
+## Overview
+
+`BaseVectorDB` serves as the foundation for all vector database implementations by:
+
+- **Interface Definition**: Establishing a consistent API for vector database operations
+- **Retry Integration**: Inheriting robust retry mechanisms from BaseDB
+- **Type Safety**: Providing clear method signatures for implementation guidance
+- **Abstraction Layer**: Separating the interface from specific vector database implementations
+
+## Class Definition
+
+```python
+from abc import ABC, abstractmethod
+from oxygent.databases.base_db import BaseDB
+
+class BaseVectorDB(BaseDB, ABC):
+    # All methods are abstract and must be implemented by subclasses
+    pass
+```
+
+## Inheritance Hierarchy
+
+```
+BaseDB (Retry mechanism)
+  ↓
+BaseVectorDB (Vector database interface contract)
+  ↓
+└── VearchDB (Vearch vector database implementation)
+```
+
+## Abstract Methods
+
+All methods in `BaseVectorDB` are abstract and **must** be implemented by subclasses. Each method automatically benefits from the retry mechanism inherited from `BaseDB`.
+
+### async create_space(index_name, body)
+
+Creates a new space (table/index) in the vector database with the specified configuration.
+
+**Parameters**:
+- `index_name` (str): Name of the space/index to create
+- `body` (dict): Space configuration including schema, indexing parameters, and vector dimensions
+
+**Returns**: Result of the space creation operation
+
+**Implementation Requirements**:
+- Must support vector field configuration with dimensionality
+- Should handle indexing algorithm selection (IVFPQ, HNSW, etc.)
+- Must support metadata field definitions
+- Should validate space configuration parameters
+
+**Vector Database Concepts**:
+- **Space**: Equivalent to a table in traditional databases, containing documents with vectors
+- **Index**: The underlying data structure for efficient vector similarity search
+- **Schema**: Definition of fields including vector dimensions and metadata types
+
+```python
+# Example space configuration:
+space_config = {
+    "name": "document_embeddings",
+    "partition_num": 1,
+    "replica_num": 3,
+    "engine": {
+        "index_size": 70000,
+        "id_type": "String",
+        "retrieval_type": "IVFPQ",  # Index algorithm
+        "retrieval_param": {
+            "metric_type": "InnerProduct",  # Similarity metric
+            "ncentroids": 256,
+            "nsubvector": 32
+        }
+    },
+    "properties": {
+        "title": {"type": "string", "index": True},
+        "category": {"type": "string", "index": True},
+        "content": {"type": "string"},
+        "vector": {
+            "dimension": 1024,  # Vector dimensionality
+            "type": "vector"
+        }
+    }
+}
+
+await vector_db.create_space("my_documents", space_config)
+```
+
+### async query_search(index_name, body)
+
+Executes a vector similarity search query against the specified space.
+
+**Parameters**:
+- `index_name` (str): Name of the space to search
+- `body` (dict): Search query containing vector, filters, and result parameters
+
+**Returns**: Search results containing similar vectors and their metadata
+
+**Implementation Requirements**:
+- Must support vector similarity search using various metrics (cosine, euclidean, etc.)
+- Should handle hybrid search combining vector similarity and metadata filters
+- Must support result ranking and scoring
+- Should handle pagination and result limiting
+
+**Search Types**:
+- **Pure Vector Search**: Find similar vectors based only on similarity scores
+- **Filtered Vector Search**: Combine vector similarity with metadata filtering
+- **Hybrid Search**: Complex queries mixing multiple search criteria
+
+```python
+# Pure vector similarity search
+search_query = {
+    "query": {
+        "sum": [
+            {"field": "vector", "feature": query_embedding.tolist()}
+        ]
+    },
+    "fields": ["title", "category", "content"],
+    "size": 10,
+    "is_brute_search": 1
+}
+
+results = await vector_db.query_search("my_documents", search_query)
+
+# Filtered vector search
+filtered_search = {
+    "query": {
+        "sum": [
+            {"field": "vector", "feature": query_embedding.tolist()}
+        ],
+        "filter": [
+            {"term": {"category": ["technology"], "operator": "and"}},
+            {"range": {"created_date": {"gte": "2024-01-01"}}}
+        ]
+    },
+    "fields": ["title", "category", "score"],
+    "size": 20
+}
+
+filtered_results = await vector_db.query_search("my_documents", filtered_search)
+```
+
+## Implementation Examples
+
+### Basic Implementation Pattern
+
+```python
+from oxygent.databases.db_vector.base_vector_db import BaseVectorDB
+
+class CustomVectorDB(BaseVectorDB):
+    def __init__(self, connection_config):
+        self.client = create_vector_client(connection_config)
+    
+    async def create_space(self, index_name, body):
+        # Implement space creation logic
+        return await self.client.create_index(
+            name=index_name,
+            schema=body
+        )
+    
+    async def query_search(self, index_name, body):
+        # Implement vector search logic
+        return await self.client.search(
+            index=index_name,
+            query=body
+        )
+```
+
+### Error Handling Pattern
+
+```python
+class RobustVectorDB(BaseVectorDB):
+    async def query_search(self, index_name, body):
+        try:
+            # The retry mechanism from BaseDB will handle transient failures
+            results = await self.client.search(index_name, body)
+            return self._process_results(results)
+        except Exception as e:
+            # Handle specific vector database errors
+            if "space_not_found" in str(e):
+                return {"hits": {"hits": []}}  # Return empty results
+            raise  # Re-raise if not a known recoverable error
+    
+    def _process_results(self, raw_results):
+        """Process and normalize results from the vector database."""
+        # Convert to standard format
+        processed = {
+            "hits": {
+                "hits": [],
+                "total": raw_results.get("total", 0)
+            }
+        }
+        
+        for hit in raw_results.get("results", []):
+            processed_hit = {
+                "_id": hit["id"],
+                "_score": hit["score"],
+                "_source": hit["metadata"]
+            }
+            processed["hits"]["hits"].append(processed_hit)
+        
+        return processed
+```
+
+## Automatic Retry Behavior
+
+Since `BaseVectorDB` inherits from `BaseDB`, all implemented methods automatically receive retry functionality:
+
+- **Automatic Decoration**: All public methods get retry logic applied
+- **Connection Recovery**: Network issues and connection problems are automatically retried
+- **Configurable Policy**: Default is 1 retry with 0.1 second delay
+- **Graceful Failure**: Returns None if all retries are exhausted
+
+```python
+# This happens automatically:
+class VearchDB(BaseVectorDB):
+    async def query_search(self, index_name, body):
+        # This method is automatically wrapped with retry logic
+        # No manual retry handling needed
+        return self._perform_search(index_name, body)
+```
+
+## Vector Database Concepts
+
+### Vector Embeddings
+
+Vector databases store high-dimensional vectors that represent semantic information:
+
+```python
+# Text embeddings example
+document_text = "Machine learning is transforming healthcare"
+embedding_vector = embed_text(document_text)  # Returns [0.1, -0.3, 0.8, ...]
+
+# Store in vector database
+document = {
+    "text": document_text,
+    "vector": {"feature": embedding_vector.tolist()},
+    "category": "healthcare",
+    "timestamp": "2024-09-01T10:00:00Z"
+}
+```
+
+### Similarity Search
+
+Vector databases excel at finding semantically similar content:
+
+```python
+# Query: "AI applications in medicine"
+query_embedding = embed_text("AI applications in medicine")
+
+# This will find documents about ML in healthcare, medical AI, etc.
+similar_docs = await vector_db.query_search("documents", {
+    "query": {
+        "sum": [{"field": "vector", "feature": query_embedding.tolist()}]
+    },
+    "size": 5
+})
+```
+
+### Distance Metrics
+
+Different metrics measure vector similarity:
+
+- **Cosine Similarity**: Measures angle between vectors (good for text)
+- **Euclidean Distance**: Straight-line distance (good for numerical data)
+- **Inner Product**: Dot product of vectors (efficient for normalized vectors)
+
+```python
+space_config = {
+    "engine": {
+        "retrieval_param": {
+            "metric_type": "InnerProduct",  # or "L2", "Cosine"
+        }
+    }
+}
+```
+
+## Usage Patterns
+
+### Document Search Engine
+
+```python
+class DocumentSearchEngine:
+    def __init__(self, vector_db: BaseVectorDB):
+        self.vector_db = vector_db
+        self.index_name = "document_search"
+    
+    async def initialize_index(self):
+        """Create search index with document schema."""
+        schema = {
+            "name": self.index_name,
+            "properties": {
+                "title": {"type": "string", "index": True},
+                "content": {"type": "string"},
+                "author": {"type": "string", "index": True},
+                "tags": {"type": "string", "index": True},
+                "vector": {"dimension": 768, "type": "vector"},
+                "created_date": {"type": "date"}
+            },
+            "engine": {
+                "retrieval_type": "IVFPQ",
+                "retrieval_param": {
+                    "metric_type": "Cosine",
+                    "ncentroids": 256
+                }
+            }
+        }
+        
+        return await self.vector_db.create_space(self.index_name, schema)
+    
+    async def semantic_search(self, query: str, filters: dict = None, top_k: int = 10):
+        """Perform semantic search with optional filters."""
+        # Convert query to embedding
+        query_embedding = await generate_embedding(query)
+        
+        # Build search query
+        search_body = {
+            "query": {
+                "sum": [
+                    {"field": "vector", "feature": query_embedding.tolist()}
+                ]
+            },
+            "fields": ["title", "content", "author", "tags"],
+            "size": top_k
+        }
+        
+        # Add filters if provided
+        if filters:
+            filter_conditions = []
+            for field, value in filters.items():
+                if isinstance(value, list):
+                    filter_conditions.append(
+                        {"term": {field: value, "operator": "or"}}
+                    )
+                else:
+                    filter_conditions.append(
+                        {"term": {field: [value], "operator": "and"}}
+                    )
+            
+            search_body["query"]["filter"] = filter_conditions
+        
+        return await self.vector_db.query_search(self.index_name, search_body)
+    
+    async def find_similar_documents(self, document_id: str, top_k: int = 5):
+        """Find documents similar to a given document."""
+        # First, get the document's vector
+        doc_query = {
+            "query": {
+                "filter": [
+                    {"term": {"_id": [document_id], "operator": "and"}}
+                ]
+            },
+            "fields": ["vector"],
+            "size": 1
+        }
+        
+        doc_result = await self.vector_db.query_search(self.index_name, doc_query)
+        
+        if doc_result["hits"]["total"] > 0:
+            doc_vector = doc_result["hits"]["hits"][0]["_source"]["vector"]["feature"]
+            
+            # Search for similar documents
+            return await self.vector_db.query_search(self.index_name, {
+                "query": {
+                    "sum": [
+                        {"field": "vector", "feature": doc_vector}
+                    ],
+                    "filter": [
+                        {"term": {"_id": [document_id], "operator": "not"}}  # Exclude self
+                    ]
+                },
+                "fields": ["title", "content", "author"],
+                "size": top_k
+            })
+        
+        return {"hits": {"hits": [], "total": 0}}
+
+# Usage
+search_engine = DocumentSearchEngine(vector_db)
+await search_engine.initialize_index()
+
+# Semantic search
+results = await search_engine.semantic_search(
+    "machine learning algorithms",
+    filters={"author": ["John Doe", "Jane Smith"]},
+    top_k=20
+)
+
+# Find similar documents
+similar = await search_engine.find_similar_documents("doc_123", top_k=10)
+```
+
+### Product Recommendation System
+
+```python
+class ProductRecommendationSystem:
+    def __init__(self, vector_db: BaseVectorDB):
+        self.vector_db = vector_db
+        self.products_index = "product_embeddings"
+        self.user_index = "user_profiles"
+    
+    async def setup_indices(self):
+        """Create product and user profile indices."""
+        product_schema = {
+            "name": self.products_index,
+            "properties": {
+                "product_id": {"type": "string", "index": True},
+                "name": {"type": "string", "index": True},
+                "category": {"type": "string", "index": True},
+                "price": {"type": "float"},
+                "description": {"type": "string"},
+                "features_vector": {"dimension": 512, "type": "vector"}
+            }
+        }
+        
+        user_schema = {
+            "name": self.user_index,
+            "properties": {
+                "user_id": {"type": "string", "index": True},
+                "preferences_vector": {"dimension": 512, "type": "vector"},
+                "age_group": {"type": "string", "index": True},
+                "location": {"type": "string", "index": True}
+            }
+        }
+        
+        await self.vector_db.create_space(self.products_index, product_schema)
+        await self.vector_db.create_space(self.user_index, user_schema)
+    
+    async def recommend_products(self, user_id: str, category: str = None, top_k: int = 10):
+        """Generate product recommendations for a user."""
+        # Get user preferences vector
+        user_query = {
+            "query": {
+                "filter": [
+                    {"term": {"user_id": [user_id], "operator": "and"}}
+                ]
+            },
+            "fields": ["preferences_vector"],
+            "size": 1
+        }
+        
+        user_result = await self.vector_db.query_search(self.user_index, user_query)
+        
+        if user_result["hits"]["total"] == 0:
+            return {"recommendations": [], "reason": "User profile not found"}
+        
+        user_vector = user_result["hits"]["hits"][0]["_source"]["preferences_vector"]["feature"]
+        
+        # Search for similar products
+        product_query = {
+            "query": {
+                "sum": [
+                    {"field": "features_vector", "feature": user_vector}
+                ]
+            },
+            "fields": ["product_id", "name", "category", "price"],
+            "size": top_k
+        }
+        
+        # Add category filter if specified
+        if category:
+            product_query["query"]["filter"] = [
+                {"term": {"category": [category], "operator": "and"}}
+            ]
+        
+        products = await self.vector_db.query_search(self.products_index, product_query)
+        
+        return {
+            "recommendations": products["hits"]["hits"],
+            "total_found": products["hits"]["total"]
+        }
+
+# Usage
+rec_system = ProductRecommendationSystem(vector_db)
+await rec_system.setup_indices()
+
+recommendations = await rec_system.recommend_products(
+    user_id="user_123",
+    category="electronics",
+    top_k=15
+)
+```
+
+## Implementation Guidelines
+
+### 1. Consistent Response Formats
+
+Ensure all implementations return consistent response formats:
+
+```python
+# Standard search response format
+{
+    "hits": {
+        "hits": [
+            {
+                "_id": "doc_1",
+                "_score": 0.95,
+                "_source": {
+                    "title": "Document Title",
+                    "content": "Document content...",
+                    "metadata": {...}
+                }
+            }
+        ],
+        "total": 42,
+        "max_score": 0.95
+    },
+    "took": 15  # milliseconds
+}
+```
+
+### 2. Vector Validation
+
+Implement robust vector validation:
+
+```python
+async def create_space(self, index_name, body):
+    # Validate vector dimensions
+    vector_fields = [
+        field for field, config in body.get("properties", {}).items()
+        if config.get("type") == "vector"
+    ]
+    
+    for field in vector_fields:
+        dimension = body["properties"][field].get("dimension")
+        if not dimension or dimension <= 0:
+            raise ValueError(f"Invalid vector dimension for field {field}")
+    
+    # Proceed with implementation
+```
+
+### 3. Index Configuration
+
+Provide sensible defaults for index parameters:
+
+```python
+def normalize_space_config(self, config):
+    """Apply default values and validate space configuration."""
+    defaults = {
+        "partition_num": 1,
+        "replica_num": 1,
+        "engine": {
+            "retrieval_type": "IVFPQ",
+            "retrieval_param": {
+                "metric_type": "InnerProduct",
+                "ncentroids": 256
+            }
+        }
+    }
+    
+    # Merge with defaults
+    normalized = {**defaults, **config}
+    return normalized
+```
+
+## Performance Considerations
+
+### Vector Search Optimization
+
+- **Index Selection**: Choose appropriate indexing algorithms based on use case
+- **Dimension Reduction**: Consider dimensionality reduction for very high-dimensional vectors
+- **Batch Operations**: Use bulk operations for inserting multiple documents
+- **Memory Management**: Monitor memory usage with large vector collections
+
+### Search Performance Tips
+
+```python
+# Efficient search practices:
+
+# 1. Use appropriate result sizes
+search_query = {
+    "size": 50,  # Don't request more than needed
+    "fields": ["title", "score"]  # Request only needed fields
+}
+
+# 2. Use pre-filtering when possible
+search_query = {
+    "query": {
+        "filter": [
+            {"term": {"category": ["relevant_category"]}}  # Filter first
+        ],
+        "sum": [
+            {"field": "vector", "feature": query_vector}   # Then search
+        ]
+    }
+}
+
+# 3. Consider search approximation for speed
+search_query = {
+    "is_brute_search": 0,  # Use approximate search for speed
+    "ef": 64  # Control accuracy vs speed tradeoff
+}
+```
+
+## See Also
+
+- [VearchDB Implementation](./vearch-db) - Vearch vector database implementation
+- [BaseDB](./base-db) - Parent class providing retry mechanisms
+- [Database Services Overview](./index) - Complete database services documentation
+- [Embedding Services](../embedding) - Text embedding and vector generation

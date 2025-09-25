@@ -1,0 +1,534 @@
+---
+title: Database Services
+description: Comprehensive database services for Elasticsearch, Redis, and vector databases with automatic retry mechanisms and production-ready implementations
+---
+
+# Database Services
+
+The OxyGent database services provide a comprehensive suite of database clients and interfaces designed for production applications. All services inherit automatic retry mechanisms, robust error handling, and consistent APIs across different database technologies.
+
+## Overview
+
+The database services architecture follows a three-layer pattern:
+
+1. **BaseDB**: Foundation class providing retry mechanisms and error handling
+2. **Service Base Classes**: Abstract interfaces defining standard operations (BaseEs, BaseRedis, BaseVectorDB)
+3. **Concrete Implementations**: Production-ready clients for specific database systems
+
+```
+BaseDB (Retry & Error Handling)
+├── BaseEs (Elasticsearch Interface)
+│   ├── LocalEs (File-based development)
+│   └── JesEs (Production Elasticsearch)
+├── BaseRedis (Redis Interface)
+│   ├── LocalRedis (In-memory development)
+│   └── JimdbApRedis (Production Redis/JimDB)
+└── BaseVectorDB (Vector Database Interface)
+    └── VearchDB (Production vector search)
+```
+
+## Core Features
+
+### Automatic Retry Mechanisms
+All database services inherit robust retry logic from `BaseDB`:
+- **Connection Recovery**: Automatic reconnection on network failures
+- **Transient Error Handling**: Retry logic for temporary issues
+- **Configurable Policies**: Customizable retry attempts and delays
+- **Graceful Degradation**: Controlled failure behavior
+
+### Consistent APIs
+Standardized interfaces across database types:
+- **Predictable Methods**: Similar method signatures across implementations
+- **Unified Error Handling**: Consistent exception patterns
+- **Standard Response Formats**: Normalized result structures
+- **Configuration Integration**: Seamless config system integration
+
+### Development & Production Parity
+Each database type includes both development and production implementations:
+- **Local Implementations**: File-based or in-memory for development
+- **Production Clients**: Full-featured clients for production environments
+- **Easy Migration**: Consistent APIs enable smooth transitions
+- **Testing Support**: Lightweight implementations for unit testing
+
+## Database Services
+
+### Elasticsearch Services
+
+**Purpose**: Full-text search, document storage, and log aggregation
+
+#### [BaseEs](./base-es)
+Abstract interface defining Elasticsearch operations including index management, document operations, and search capabilities.
+
+**Key Methods**:
+- `create_index()`: Index creation and configuration
+- `index()` / `update()`: Document operations
+- `search()`: Full-text and structured queries
+- `exists()`: Document existence checking
+
+#### [LocalEs](./local-es)
+File-system-backed Elasticsearch simulation with UTF-8 safety and atomic operations.
+
+**Best For**:
+- Development environments
+- Unit testing
+- Offline applications
+- Small to medium datasets
+
+**Features**:
+- Cross-platform file operations
+- Automatic encoding detection and migration
+- Data corruption recovery
+- Naive query engine for basic Elasticsearch DSL
+
+#### [JesEs](./jes-es) 
+Production Elasticsearch client with authentication, connection pooling, and full ES functionality.
+
+**Best For**:
+- Production applications
+- Large-scale data storage
+- Complex search requirements
+- High-availability systems
+
+**Features**:
+- HTTP basic authentication
+- Connection pool management
+- Full Elasticsearch API support
+- Comprehensive error handling
+
+### Redis Services
+
+**Purpose**: Caching, session storage, queuing, and key-value operations
+
+#### [BaseRedis](./base-redis)
+Abstract interface defining Redis operations including key-value, list, and expiration operations.
+
+**Key Methods**:
+- `set()` / `get()`: Basic key-value operations
+- `mset()` / `mget()`: Batch operations
+- `lpush()` / `brpop()`: List operations for queues
+- `expire()`: TTL management
+
+#### [LocalRedis](./local-redis)
+In-memory Redis simulation using Python data structures with automatic expiration.
+
+**Best For**:
+- Development environments
+- Single-process applications
+- Testing scenarios
+- Small datasets
+
+**Features**:
+- Python deque-based list operations
+- Automatic TTL handling
+- Type validation and conversion
+- Configurable size limits
+
+#### [JimdbApRedis](./jimdb-ap-redis)
+Production Redis client specifically designed for JimDB with enhanced list operations and retry logic.
+
+**Best For**:
+- Production applications
+- JimDB deployments
+- High-throughput scenarios
+- Complex list operations
+
+**Features**:
+- JimDB-specific optimizations
+- Enhanced lpush with size management
+- Pipeline support for atomic operations
+- Custom retry decorators
+
+### Vector Database Services
+
+**Purpose**: Semantic search, similarity matching, and AI tool retrieval
+
+#### [BaseVectorDB](./base-vector-db)
+Abstract interface for vector database operations including space management and similarity search.
+
+**Key Methods**:
+- `create_space()`: Vector index creation
+- `query_search()`: Similarity search operations
+
+#### [VearchDB](./vearch-db)
+Comprehensive Vearch implementation with embedding support and tool management systems.
+
+**Best For**:
+- Semantic search applications
+- AI tool discovery systems
+- Recommendation engines
+- Large-scale vector operations
+
+**Features**:
+- Automatic embedding generation
+- Tool retrieval and management
+- Hybrid search (vector + filters)
+- Batch processing capabilities
+
+## Common Usage Patterns
+
+### Service Initialization
+
+```python
+# Development setup with local implementations
+from oxygent.databases.db_es.local_es import LocalEs
+from oxygent.databases.db_redis.local_redis import LocalRedis
+
+es = LocalEs()
+redis = LocalRedis()
+
+# Production setup with real database services
+from oxygent.databases.db_es.jes_es import JesEs
+from oxygent.databases.db_redis.jimdb_ap_redis import JimdbApRedis
+
+es = JesEs(
+    hosts=["http://es-cluster:9200"],
+    user="app_user",
+    password="secure_password"
+)
+
+redis = JimdbApRedis(
+    host="redis-cluster",
+    port=6379,
+    password="redis_password"
+)
+```
+
+### Error Handling
+
+```python
+async def robust_database_operation():
+    """Example of robust database operations with error handling."""
+    try:
+        # ES operations with automatic retry
+        await es.index("logs", "doc1", {"message": "Application started"})
+        results = await es.search("logs", {"query": {"match_all": {}}})
+        
+        # Redis operations with automatic retry
+        await redis.set("app:status", "running", ex=3600)
+        status = await redis.get("app:status")
+        
+        return {"success": True, "results": results}
+        
+    except Exception as e:
+        logger.error(f"Database operation failed: {e}")
+        return {"success": False, "error": str(e)}
+    
+    finally:
+        # Always clean up connections
+        await es.close()
+        await redis.close()
+```
+
+### Service Factory Pattern
+
+```python
+class DatabaseServiceFactory:
+    """Factory for creating database services based on environment."""
+    
+    @staticmethod
+    def create_elasticsearch(environment="development"):
+        if environment == "development":
+            return LocalEs()
+        else:
+            return JesEs(
+                hosts=os.getenv("ES_HOSTS", "").split(","),
+                user=os.getenv("ES_USER"),
+                password=os.getenv("ES_PASSWORD")
+            )
+    
+    @staticmethod
+    def create_redis(environment="development"):
+        if environment == "development":
+            return LocalRedis()
+        else:
+            return JimdbApRedis(
+                host=os.getenv("REDIS_HOST"),
+                port=int(os.getenv("REDIS_PORT", 6379)),
+                password=os.getenv("REDIS_PASSWORD")
+            )
+    
+    @staticmethod
+    def create_vector_db(config):
+        return VearchDB(config)
+
+# Usage
+env = os.getenv("ENVIRONMENT", "development")
+es = DatabaseServiceFactory.create_elasticsearch(env)
+redis = DatabaseServiceFactory.create_redis(env)
+```
+
+## Configuration Integration
+
+All database services integrate with the OxyGent configuration system:
+
+```python
+from oxygent.config import Config
+
+# Configuration values used by database services
+Config.get_cache_save_dir()      # LocalEs data directory
+Config.get_redis_expire_time()   # Default Redis TTL
+Config.get_redis_max_size()      # Redis list size limits
+Config.get_redis_max_length()    # Redis string length limits
+```
+
+## Best Practices
+
+### 1. Environment-based Configuration
+
+```python
+# Use environment variables for database connections
+DATABASE_CONFIG = {
+    "elasticsearch": {
+        "hosts": os.getenv("ES_HOSTS", "http://localhost:9200").split(","),
+        "user": os.getenv("ES_USER", "elastic"),
+        "password": os.getenv("ES_PASSWORD", "changeme")
+    },
+    "redis": {
+        "host": os.getenv("REDIS_HOST", "localhost"),
+        "port": int(os.getenv("REDIS_PORT", 6379)),
+        "password": os.getenv("REDIS_PASSWORD", "")
+    }
+}
+```
+
+### 2. Connection Management
+
+```python
+async def managed_database_operations():
+    """Proper connection lifecycle management."""
+    es = None
+    redis = None
+    
+    try:
+        # Initialize connections
+        es = create_es_client()
+        redis = create_redis_client()
+        
+        # Perform operations
+        await perform_database_operations(es, redis)
+        
+    finally:
+        # Always clean up
+        if es:
+            await es.close()
+        if redis:
+            await redis.close()
+```
+
+### 3. Health Monitoring
+
+```python
+class DatabaseHealthChecker:
+    def __init__(self, es, redis, vector_db=None):
+        self.es = es
+        self.redis = redis
+        self.vector_db = vector_db
+    
+    async def check_all_services(self):
+        """Check health of all database services."""
+        health_status = {}
+        
+        # Elasticsearch health
+        try:
+            await self.es.search("_cluster", {"query": {"match_all": {}}})
+            health_status["elasticsearch"] = "healthy"
+        except Exception as e:
+            health_status["elasticsearch"] = f"unhealthy: {e}"
+        
+        # Redis health
+        try:
+            test_key = f"health_check_{int(time.time())}"
+            await self.redis.set(test_key, "ok", ex=60)
+            result = await self.redis.get(test_key)
+            await self.redis.delete(test_key)
+            
+            health_status["redis"] = "healthy" if result else "unhealthy"
+        except Exception as e:
+            health_status["redis"] = f"unhealthy: {e}"
+        
+        return health_status
+```
+
+### 4. Testing with Local Implementations
+
+```python
+import pytest
+
+class TestApplicationWithDatabases:
+    @pytest.fixture
+    async def database_services(self):
+        """Fixture providing local database implementations for testing."""
+        es = LocalEs()
+        redis = LocalRedis()
+        
+        # Setup test data
+        await es.create_index("test_index", {"mappings": {...}})
+        await redis.set("test_key", "test_value")
+        
+        yield es, redis
+        
+        # Cleanup
+        await es.close()
+        await redis.close()
+    
+    async def test_application_logic(self, database_services):
+        es, redis = database_services
+        
+        # Test application logic using local implementations
+        result = await my_application_function(es, redis)
+        assert result["success"] is True
+```
+
+## Migration Strategies
+
+### Development to Production
+
+```python
+class DatabaseMigrator:
+    """Helper for migrating from local to production databases."""
+    
+    async def migrate_es_data(self, local_es: LocalEs, prod_es: JesEs):
+        """Migrate data from LocalEs to production Elasticsearch."""
+        # Get all indices from local implementation
+        local_data_dir = local_es.data_dir
+        
+        for index_file in os.listdir(local_data_dir):
+            if index_file.endswith('.json') and not index_file.endswith('_mapping.json'):
+                index_name = index_file.replace('.json', '')
+                
+                # Read local data
+                local_data = await local_es._read_json_safe(
+                    os.path.join(local_data_dir, index_file)
+                )
+                
+                # Create index in production
+                mapping_file = f"{index_name}_mapping.json"
+                mapping_path = os.path.join(local_data_dir, mapping_file)
+                
+                if os.path.exists(mapping_path):
+                    mapping = await local_es._read_json_safe(mapping_path)
+                    await prod_es.create_index(index_name, mapping)
+                
+                # Migrate documents
+                for doc_id, doc_body in local_data.items():
+                    await prod_es.index(index_name, doc_id, doc_body)
+```
+
+## Performance Considerations
+
+### Connection Pooling
+
+```python
+# Production configuration with optimized connection pooling
+production_es = JesEs(
+    hosts=["http://es1:9200", "http://es2:9200", "http://es3:9200"],
+    user="app_user", 
+    password="password",
+    maxsize=100,  # Connection pool size
+    timeout=30    # Request timeout
+)
+
+production_redis = JimdbApRedis(
+    host="redis-cluster",
+    port=6379,
+    password="password"
+    # Uses internal connection pooling (max_connections=5)
+)
+```
+
+### Batch Operations
+
+```python
+async def efficient_bulk_operations():
+    """Use batch operations for better performance."""
+    
+    # Elasticsearch bulk operations
+    documents = [
+        ("doc1", {"title": "Document 1", "content": "Content 1"}),
+        ("doc2", {"title": "Document 2", "content": "Content 2"}),
+        ("doc3", {"title": "Document 3", "content": "Content 3"})
+    ]
+    
+    for doc_id, doc_body in documents:
+        await es.index("my_index", doc_id, doc_body)
+    
+    # Redis batch operations
+    redis_data = {
+        "user:1:name": "Alice",
+        "user:1:email": "alice@example.com",
+        "user:1:status": "active"
+    }
+    
+    await redis.mset(redis_data, ex=3600)
+```
+
+## Monitoring and Observability
+
+### Logging Integration
+
+```python
+import logging
+
+# Configure database operation logging
+db_logger = logging.getLogger("oxygent.databases")
+db_logger.setLevel(logging.INFO)
+
+# Database services automatically log retry attempts and errors
+# Custom application logging:
+async def logged_database_operation():
+    db_logger.info("Starting database operation")
+    
+    try:
+        result = await es.search("logs", query)
+        db_logger.info(f"Search completed: {result['hits']['total']} results")
+        return result
+    except Exception as e:
+        db_logger.error(f"Database operation failed: {e}")
+        raise
+```
+
+### Metrics Collection
+
+```python
+class DatabaseMetricsCollector:
+    def __init__(self):
+        self.operation_counts = defaultdict(int)
+        self.operation_times = defaultdict(list)
+    
+    async def timed_operation(self, operation_name, operation_func):
+        """Collect timing metrics for database operations."""
+        start_time = time.time()
+        
+        try:
+            result = await operation_func()
+            self.operation_counts[f"{operation_name}_success"] += 1
+            return result
+        except Exception as e:
+            self.operation_counts[f"{operation_name}_error"] += 1
+            raise
+        finally:
+            duration = time.time() - start_time
+            self.operation_times[operation_name].append(duration)
+    
+    def get_metrics(self):
+        """Get collected metrics."""
+        metrics = dict(self.operation_counts)
+        
+        for operation, times in self.operation_times.items():
+            if times:
+                metrics[f"{operation}_avg_time"] = sum(times) / len(times)
+                metrics[f"{operation}_max_time"] = max(times)
+        
+        return metrics
+```
+
+## See Also
+
+- [BaseDB](./base-db) - Foundation class with retry mechanisms
+- [Configuration Management](../config) - Database configuration settings
+- [Agent System](../agents) - How agents use database services
+- [Flow System](../flows) - Database integration in workflows
+
+---
+
+The database services provide a robust foundation for data persistence, caching, and search operations across the OxyGent framework. Their consistent APIs, automatic retry mechanisms, and flexible deployment options make them suitable for both development and production environments.

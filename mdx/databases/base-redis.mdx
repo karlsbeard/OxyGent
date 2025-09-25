@@ -1,0 +1,600 @@
+---
+title: BaseRedis
+description: Abstract base class defining the interface contract for all Redis database service implementations
+---
+
+# BaseRedis
+
+The `BaseRedis` class is an abstract base class that defines the essential interface contract for all Redis database service implementations in the OxyGent framework. It inherits from `BaseDB` to leverage automatic retry functionality while establishing a standardized API for Redis key-value operations.
+
+## Overview
+
+`BaseRedis` serves as the foundation for all Redis implementations by:
+
+- **Interface Definition**: Establishing a consistent API for Redis operations
+- **Retry Integration**: Inheriting robust retry mechanisms from BaseDB
+- **Type Safety**: Providing clear method signatures for implementation guidance  
+- **Operation Coverage**: Supporting key-value, list, and expiration operations
+
+## Class Definition
+
+```python
+from abc import ABC, abstractmethod
+from oxygent.databases.base_db import BaseDB
+
+class BaseRedis(BaseDB, ABC):
+    # All methods are abstract and must be implemented by subclasses
+    pass
+```
+
+## Inheritance Hierarchy
+
+```
+BaseDB (Retry mechanism)
+  ↓
+BaseRedis (Redis interface contract)
+  ↓
+├── LocalRedis (In-memory implementation)
+└── JimdbApRedis (Real Redis implementation)
+```
+
+## Operation Categories
+
+The `BaseRedis` interface covers several categories of Redis operations:
+
+### Key-Value Operations
+- Basic get/set operations with optional expiration
+- Multi-key operations (mget/mset) for batch processing
+- Key existence checking and deletion
+
+### List Operations  
+- Push/pop operations (lpush, brpop, lrange)
+- List management (llen, ltrim)
+- Support for both blocking and non-blocking operations
+
+### Key Management
+- Expiration setting and TTL management
+- Key deletion and existence checking
+
+## Abstract Methods
+
+All methods in `BaseRedis` are abstract and **must** be implemented by subclasses. Each method automatically benefits from the retry mechanism inherited from `BaseDB`.
+
+### Key-Value Operations
+
+#### async set(key: str, value: str, ex: int = None)
+
+Sets a key-value pair with optional expiration time.
+
+**Parameters**:
+- `key` (str): The key to set
+- `value` (str): The value to store  
+- `ex` (int, optional): Expiration time in seconds
+
+**Implementation Requirements**:
+- Must support string values
+- Should handle expiration properly if specified
+- Must validate input parameters
+
+```python
+# Example usage:
+await redis.set("user:123", "john_doe")  # No expiration
+await redis.set("session:abc", "active", ex=3600)  # 1 hour expiration
+```
+
+#### async get(key: str)
+
+Gets the value associated with a key.
+
+**Parameters**:
+- `key` (str): The key to retrieve
+
+**Returns**: The value associated with the key, or None if key doesn't exist
+
+**Implementation Requirements**:
+- Must handle key not found scenarios gracefully
+- Should return None for non-existent keys
+- Must handle expired keys appropriately
+
+```python
+# Example usage:
+value = await redis.get("user:123")
+if value is not None:
+    print(f"User ID: {value}")
+```
+
+#### async exists(key: str)
+
+Checks if a key exists in the database.
+
+**Parameters**:
+- `key` (str): The key to check
+
+**Returns**: Boolean indicating key existence
+
+**Implementation Requirements**:
+- Must return True if key exists, False otherwise
+- Should handle expired keys correctly
+- Must be efficient (avoid fetching the full value)
+
+```python
+# Example usage:
+if await redis.exists("user:123"):
+    user_data = await redis.get("user:123")
+else:
+    # Key doesn't exist, handle accordingly
+    user_data = create_default_user()
+```
+
+#### async delete(key: str)
+
+Deletes a key from the database.
+
+**Parameters**:
+- `key` (str): The key to delete
+
+**Returns**: Number of keys deleted (typically 0 or 1)
+
+**Implementation Requirements**:
+- Must remove the key and its associated value
+- Should return count of actually deleted keys
+- Must handle non-existent keys gracefully
+
+```python
+# Example usage:
+deleted_count = await redis.delete("temp_data")
+print(f"Deleted {deleted_count} keys")
+```
+
+### Batch Operations
+
+#### async mset(items: dict, ex: int = None)
+
+Sets multiple key-value pairs in a single operation.
+
+**Parameters**:
+- `items` (dict): Dictionary containing key-value pairs to set
+- `ex` (int, optional): Expiration time in seconds for all keys
+
+**Implementation Requirements**:
+- Must support atomic or near-atomic batch setting
+- Should apply expiration to all keys if specified
+- Must validate all items before processing
+
+```python
+# Example usage:
+user_data = {
+    "user:123:name": "John Doe",
+    "user:123:email": "john@example.com", 
+    "user:123:status": "active"
+}
+await redis.mset(user_data, ex=3600)  # All expire in 1 hour
+```
+
+#### async mget(keys: list)
+
+Gets multiple values for the given keys in a single operation.
+
+**Parameters**:
+- `keys` (list): List of keys to retrieve
+
+**Returns**: List of values corresponding to the keys (None for non-existent keys)
+
+**Implementation Requirements**:
+- Must maintain key order in the response
+- Should return None for non-existent or expired keys
+- Must be more efficient than multiple get() calls
+
+```python
+# Example usage:
+keys = ["user:123:name", "user:123:email", "user:123:status"]
+values = await redis.mget(keys)
+# values = ["John Doe", "john@example.com", "active"]
+```
+
+### List Operations
+
+#### async lpush(key: str, *values: list)
+
+Pushes one or more values to the left (head) of a list.
+
+**Parameters**:
+- `key` (str): The list key
+- `*values` (list): One or more values to push to the list
+
+**Returns**: The length of the list after the push operation
+
+**Implementation Requirements**:
+- Must support multiple values in a single operation
+- Should create the list if it doesn't exist
+- Must maintain proper LIFO order for list elements
+
+```python
+# Example usage:
+length = await redis.lpush("notifications", "New message", "System update")
+print(f"List now has {length} items")
+
+# Push single value
+await redis.lpush("task_queue", "process_order_123")
+```
+
+#### async brpop(key: str, timeout: int = 1)
+
+Blocking pop operation that removes and returns the last element of a list.
+
+**Parameters**:
+- `key` (str): The list key to pop from
+- `timeout` (int): Maximum time to wait in seconds (default: 1)
+
+**Returns**: The popped element, or None if timeout reached
+
+**Implementation Requirements**:
+- Must implement blocking behavior (wait for elements)
+- Should respect timeout parameter
+- Must handle empty lists appropriately
+
+```python
+# Example usage:
+# Worker pattern - wait for tasks
+while True:
+    task = await redis.brpop("task_queue", timeout=30)
+    if task:
+        process_task(task)
+    else:
+        print("No tasks available, continuing...")
+```
+
+#### async lrange(key: str, start: int = 0, end: int = -1)
+
+Gets a range of elements from a list.
+
+**Parameters**:
+- `key` (str): The list key
+- `start` (int): Start index (default: 0)
+- `end` (int): End index, -1 means last element (default: -1)
+
+**Returns**: List of elements in the specified range
+
+**Implementation Requirements**:
+- Must support negative indices (-1 for last element)
+- Should return empty list for non-existent keys
+- Must handle out-of-bounds indices gracefully
+
+```python
+# Example usage:
+# Get all elements
+all_items = await redis.lrange("notifications")
+
+# Get first 10 elements
+recent_items = await redis.lrange("notifications", 0, 9)
+
+# Get last 5 elements
+latest_items = await redis.lrange("notifications", -5, -1)
+```
+
+#### async llen(key: str)
+
+Gets the length of a list.
+
+**Parameters**:
+- `key` (str): The list key
+
+**Returns**: The number of elements in the list
+
+**Implementation Requirements**:
+- Must return 0 for non-existent keys
+- Should be efficient (O(1) operation)
+- Must handle expired keys correctly
+
+```python
+# Example usage:
+queue_size = await redis.llen("task_queue")
+if queue_size > 100:
+    print("Queue is getting full, consider scaling")
+```
+
+#### async ltrim(key: str, start: int, end: int)
+
+Trims a list to keep only elements within the specified range.
+
+**Parameters**:
+- `key` (str): The list key
+- `start` (int): Start index to keep
+- `end` (int): End index to keep
+
+**Implementation Requirements**:
+- Must remove elements outside the specified range
+- Should handle negative indices properly
+- Must be efficient for list maintenance
+
+```python
+# Example usage:
+# Keep only the first 100 items (trim the rest)
+await redis.ltrim("activity_log", 0, 99)
+
+# Keep only the last 50 items
+await redis.ltrim("recent_events", -50, -1)
+```
+
+### Key Management
+
+#### async expire(key: str, ex: int)
+
+Sets an expiration time for a key.
+
+**Parameters**:
+- `key` (str): The key to set expiration for
+- `ex` (int): Expiration time in seconds
+
+**Implementation Requirements**:
+- Must set TTL for existing keys
+- Should handle non-existent keys appropriately
+- Must work with all key types (strings, lists, etc.)
+
+```python
+# Example usage:
+# Set a key to expire in 1 hour
+await redis.expire("temp_data", 3600)
+
+# Set session to expire in 30 minutes
+await redis.expire("session:abc123", 1800)
+```
+
+#### async close()
+
+Closes the Redis client connection and cleans up resources.
+
+**Returns**: Operation result (implementation dependent)
+
+**Implementation Requirements**:
+- Must properly close all active connections
+- Should clean up connection pools and resources
+- Must be safe to call multiple times
+
+```python
+# Example usage:
+try:
+    # Perform Redis operations
+    await redis.set("key", "value")
+    result = await redis.get("key")
+finally:
+    await redis.close()  # Ensure cleanup
+```
+
+## Implementation Examples
+
+### Basic Implementation Pattern
+
+```python
+from oxygent.databases.db_redis.base_redis import BaseRedis
+
+class CustomRedis(BaseRedis):
+    def __init__(self, connection_params):
+        self.client = create_redis_client(connection_params)
+    
+    async def set(self, key: str, value: str, ex: int = None):
+        if ex is not None:
+            return await self.client.setex(key, ex, value)
+        else:
+            return await self.client.set(key, value)
+    
+    async def get(self, key: str):
+        return await self.client.get(key)
+    
+    # ... implement other abstract methods
+```
+
+### Error Handling Pattern
+
+```python
+class RobustRedis(BaseRedis):
+    async def get(self, key: str):
+        try:
+            # The retry mechanism from BaseDB will handle transient failures
+            return await self.client.get(key)
+        except Exception as e:
+            # Handle specific Redis errors
+            if "key not found" in str(e).lower():
+                return None  # Normal case for missing keys
+            raise  # Re-raise if not a known recoverable error
+```
+
+## Automatic Retry Behavior
+
+Since `BaseRedis` inherits from `BaseDB`, all implemented methods automatically receive retry functionality:
+
+- **Automatic Decoration**: All public methods get retry logic applied
+- **Connection Recovery**: Network issues and connection problems are automatically retried
+- **Configurable Policy**: Default is 1 retry with 0.1 second delay
+- **Graceful Failure**: Returns None if all retries are exhausted
+
+```python
+# This happens automatically:
+class LocalRedis(BaseRedis):
+    async def get(self, key: str):
+        # This method is automatically wrapped with retry logic
+        # No manual retry handling needed
+        return self._perform_get(key)
+```
+
+## Usage Patterns
+
+### Caching Pattern
+
+```python
+class CacheService:
+    def __init__(self, redis: BaseRedis):
+        self.redis = redis
+        self.cache_ttl = 3600  # 1 hour
+    
+    async def get_cached_data(self, cache_key: str, data_generator):
+        # Try to get from cache first
+        cached_data = await self.redis.get(cache_key)
+        if cached_data is not None:
+            return cached_data
+        
+        # Generate data if not in cache
+        fresh_data = await data_generator()
+        
+        # Store in cache with expiration
+        await self.redis.set(cache_key, fresh_data, ex=self.cache_ttl)
+        
+        return fresh_data
+```
+
+### Queue Pattern
+
+```python
+class TaskQueue:
+    def __init__(self, redis: BaseRedis, queue_name: str):
+        self.redis = redis
+        self.queue_name = queue_name
+    
+    async def enqueue(self, task_data: str):
+        """Add a task to the queue."""
+        return await self.redis.lpush(self.queue_name, task_data)
+    
+    async def dequeue(self, timeout: int = 30):
+        """Remove and return a task from the queue."""
+        return await self.redis.brpop(self.queue_name, timeout)
+    
+    async def get_queue_size(self):
+        """Get the current queue size."""
+        return await self.redis.llen(self.queue_name)
+    
+    async def peek_queue(self, count: int = 10):
+        """Peek at the next N tasks without removing them."""
+        return await self.redis.lrange(self.queue_name, -count, -1)
+```
+
+### Session Management Pattern
+
+```python
+class SessionManager:
+    def __init__(self, redis: BaseRedis):
+        self.redis = redis
+        self.session_ttl = 1800  # 30 minutes
+    
+    async def create_session(self, session_id: str, user_data: dict):
+        """Create a new user session."""
+        session_key = f"session:{session_id}"
+        session_data = {
+            f"{session_key}:user_id": user_data["user_id"],
+            f"{session_key}:username": user_data["username"],
+            f"{session_key}:permissions": str(user_data["permissions"])
+        }
+        
+        await self.redis.mset(session_data, ex=self.session_ttl)
+    
+    async def get_session(self, session_id: str):
+        """Retrieve session data."""
+        session_key = f"session:{session_id}"
+        keys = [f"{session_key}:user_id", f"{session_key}:username", f"{session_key}:permissions"]
+        values = await self.redis.mget(keys)
+        
+        if values[0] is not None:  # Session exists
+            return {
+                "user_id": values[0],
+                "username": values[1], 
+                "permissions": eval(values[2]) if values[2] else []
+            }
+        return None
+    
+    async def extend_session(self, session_id: str):
+        """Extend session expiration."""
+        session_key = f"session:{session_id}"
+        if await self.redis.exists(f"{session_key}:user_id"):
+            await self.redis.expire(f"{session_key}:user_id", self.session_ttl)
+            await self.redis.expire(f"{session_key}:username", self.session_ttl)
+            await self.redis.expire(f"{session_key}:permissions", self.session_ttl)
+            return True
+        return False
+```
+
+## Implementation Guidelines
+
+### 1. Consistent Response Formats
+
+Ensure all implementations return consistent response formats:
+
+```python
+# Set operation responses
+await redis.set("key", "value")  # Returns: True/False or OK status
+
+# Get operation responses  
+value = await redis.get("existing_key")  # Returns: actual value
+value = await redis.get("missing_key")   # Returns: None
+
+# List operation responses
+length = await redis.lpush("list", "item")  # Returns: new list length
+item = await redis.brpop("list", 10)       # Returns: item or None
+```
+
+### 2. Parameter Validation
+
+Implement robust parameter validation in all methods:
+
+```python
+async def set(self, key: str, value: str, ex: int = None):
+    if not key:
+        raise ValueError("Key cannot be empty")
+    if ex is not None and ex <= 0:
+        raise ValueError("Expiration time must be positive")
+    
+    # Proceed with implementation
+```
+
+### 3. Resource Management
+
+Properly manage connections and resources:
+
+```python
+class ManagedRedis(BaseRedis):
+    def __init__(self):
+        self.client = None
+        self.connection_pool = None
+    
+    async def _ensure_connected(self):
+        if not self.client:
+            self.client = await create_client()
+    
+    async def close(self):
+        if self.client:
+            await self.client.close()
+            self.client = None
+```
+
+## Concrete Implementations
+
+The OxyGent framework provides two main implementations of `BaseRedis`:
+
+### LocalRedis
+- **In-memory**: Uses Python data structures for Redis simulation
+- **Development-friendly**: No external dependencies required
+- **Feature subset**: Limited to core operations needed for development
+
+### JimdbApRedis
+- **Production-ready**: Connects to real Redis clusters
+- **Full-featured**: Supports complete Redis functionality
+- **JimDB-optimized**: Specifically designed for JD's JimDB service
+
+## Configuration Integration
+
+BaseRedis implementations integrate with the OxyGent configuration system:
+
+```python
+from oxygent.config import Config
+
+class ConfiguredRedis(BaseRedis):
+    def __init__(self):
+        self.expire_time = Config.get_redis_expire_time()
+        self.max_size = Config.get_redis_max_size()
+        self.max_length = Config.get_redis_max_length()
+```
+
+## See Also
+
+- [LocalRedis Implementation](./local-redis) - In-memory Redis simulation
+- [JimdbApRedis Implementation](./jimdb-ap-redis) - Production Redis client
+- [BaseDB](./base-db) - Parent class providing retry mechanisms
+- [Database Services Overview](./index) - Complete database services documentation

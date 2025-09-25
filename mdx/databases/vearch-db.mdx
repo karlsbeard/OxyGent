@@ -1,0 +1,804 @@
+---
+title: VearchDB
+description: Comprehensive Vearch vector database implementation with embedding support, tool retrieval, and advanced similarity search capabilities
+---
+
+# VearchDB
+
+The `VearchDB` class provides a comprehensive implementation of the Vearch vector database interface, offering advanced vector similarity search, automatic embedding generation, and specialized tool retrieval systems. It's designed for production use cases requiring semantic search, recommendation systems, and AI tool discovery.
+
+## Overview
+
+`VearchDB` is a full-featured vector database client that provides:
+
+- **Semantic Search**: Text-to-vector conversion and similarity search
+- **Tool Management**: Specialized system for AI tool discovery and retrieval
+- **Hybrid Search**: Combining vector similarity with metadata filtering
+- **Batch Operations**: Efficient processing of multiple documents
+- **Production Features**: Space management, health monitoring, and bulk operations
+
+## Class Hierarchy
+
+```
+BaseVectorDB (Interface)
+  ↓
+VearchDB (Main implementation)
+  ├── VectorToolAsync (Low-level HTTP operations)
+  ├── EmbeddingModel (Remote embedding service)
+  └── VearchConfig (Configuration management)
+```
+
+## Constructor
+
+### VearchDB(config)
+
+Initializes the Vearch database client with configuration and optional embedding model.
+
+**Parameters**:
+- `config` (dict): Configuration dictionary containing connection details and settings
+
+**Configuration Options**:
+- `master_url`: URL of Vearch master node
+- `router_url`: URL of Vearch router node
+- `db_name`: Database name
+- `space_name`: Default space name (optional)
+- `tool_df_space_name`: Tool space name for system operations (optional)
+- `embedding_model_url`: URL for embedding service (optional)
+
+```python
+# Basic configuration
+config = {
+    "master_url": "http://vearch-master:8817",
+    "router_url": "http://vearch-router:9001", 
+    "db_name": "my_application"
+}
+
+vearch = VearchDB(config)
+
+# With embedding model
+config_with_embedding = {
+    "master_url": "http://vearch-master:8817",
+    "router_url": "http://vearch-router:9001",
+    "db_name": "semantic_search",
+    "embedding_model_url": "http://embedding-service:8080/v2/models/embedding/infer"
+}
+
+vearch = VearchDB(config_with_embedding)
+```
+
+## Core Methods
+
+### async create_space(space_config)
+
+Creates a new space with custom configuration.
+
+**Parameters**:
+- `space_config` (dict): Complete space configuration including schema and indexing
+
+**Returns**: API response from Vearch
+
+**Features**:
+- Custom space schema definition
+- Vector indexing algorithm selection
+- Metadata field configuration
+- Partitioning and replication settings
+
+```python
+# Custom space for document search
+doc_space_config = {
+    "name": "documents",
+    "partition_num": 2,
+    "replica_num": 1,
+    "engine": {
+        "index_size": 100000,
+        "id_type": "String", 
+        "retrieval_type": "IVFPQ",
+        "retrieval_param": {
+            "metric_type": "InnerProduct",
+            "ncentroids": 512,
+            "nsubvector": 64
+        }
+    },
+    "properties": {
+        "title": {"type": "string", "index": True},
+        "category": {"type": "string", "index": True},
+        "content": {"type": "string"},
+        "author": {"type": "string", "index": True},
+        "vector": {"dimension": 1024, "type": "vector"},
+        "created_date": {"type": "date"}
+    }
+}
+
+result = await vearch.create_space(doc_space_config)
+print(f"Space created: {result}")
+```
+
+### async query_search(space_name, query, retrieval_nums, fields=[], threshold=None)
+
+Performs semantic search using text queries with automatic embedding generation.
+
+**Parameters**:
+- `space_name` (str): Name of the space to search
+- `query` (str): Text query to search for
+- `retrieval_nums` (int): Maximum number of results to return
+- `fields` (list): List of fields to include in results
+- `threshold` (float, optional): Minimum similarity score threshold
+
+**Returns**: pandas.DataFrame containing search results
+
+**Features**:
+- Automatic text-to-embedding conversion
+- Similarity scoring and ranking
+- Optional threshold filtering
+- Structured result formatting
+
+```python
+# Basic semantic search
+results = await vearch.query_search(
+    space_name="documents",
+    query="machine learning algorithms",
+    retrieval_nums=10,
+    fields=["title", "content", "author"]
+)
+
+print(f"Found {len(results)} results")
+for _, row in results.iterrows():
+    print(f"Title: {row['title']}, Score: {row['_score']}")
+
+# With threshold filtering
+high_relevance_results = await vearch.query_search(
+    space_name="documents", 
+    query="deep learning neural networks",
+    retrieval_nums=20,
+    fields=["title", "content", "category"],
+    threshold=0.7  # Only results with score > 0.7
+)
+```
+
+### async query_search_batch(space_name, query_list, retrieval_nums, fields=[])
+
+Performs batch semantic search for multiple queries efficiently.
+
+**Parameters**:
+- `space_name` (str): Name of the space to search
+- `query_list` (list): List of text queries
+- `retrieval_nums` (int): Maximum results per query
+- `fields` (list): Fields to include in results
+
+**Returns**: pandas.DataFrame with concatenated results from all queries
+
+**Features**:
+- Batch processing for efficiency
+- Automatic embedding generation for all queries
+- Combined result set
+- No deduplication (may contain duplicate documents)
+
+```python
+# Batch search for multiple related queries
+queries = [
+    "machine learning models",
+    "neural network architectures", 
+    "deep learning frameworks",
+    "AI model training"
+]
+
+batch_results = await vearch.query_search_batch(
+    space_name="ai_research",
+    query_list=queries,
+    retrieval_nums=5,
+    fields=["title", "abstract", "authors"]
+)
+
+print(f"Total results from batch search: {len(batch_results)}")
+
+# Group results by original query (if needed)
+# Note: VearchDB doesn't track which query produced which result
+```
+
+### async check_space_exist(space_name)
+
+Checks if a space exists in the database.
+
+**Parameters**:
+- `space_name` (str): Name of the space to check
+
+**Returns**: Boolean indicating space existence
+
+```python
+# Check before creating or using a space
+if await vearch.check_space_exist("my_documents"):
+    print("Space exists, ready to use")
+else:
+    print("Space doesn't exist, creating...")
+    await vearch.create_space(my_space_config)
+```
+
+## Tool Management System
+
+VearchDB includes a specialized system for managing and retrieving AI tools based on semantic similarity.
+
+### async create_tool_df_space(tool_df_space_name)
+
+Creates a system-specific space for tool storage with predefined schema optimized for tool retrieval.
+
+**Parameters**:
+- `tool_df_space_name` (str): Name of the tool space
+
+**Features**:
+- Predefined schema optimized for tool metadata
+- Vector embeddings for tool descriptions
+- Indexed fields for efficient filtering
+- Production-ready configuration
+
+```python
+# Create tool management space
+await vearch.create_tool_df_space("system_tools")
+
+# The space includes these fields:
+# - app_name: Application identifier (indexed)
+# - agent_name: Agent identifier (indexed) 
+# - tool_name: Tool identifier (indexed)
+# - tool_desc: Tool description (for embeddings)
+# - vector: 1024-dimensional embedding vector
+# - remark: Additional metadata
+```
+
+### async create_vearch_table_by_tool_list(tool_list)
+
+Initializes the tool system with a complete tool catalog.
+
+**Parameters**:
+- `tool_list` (list): List of tuples with tool information
+  - Format: `[('app_name', 'agent_name', 'tool_name', 'tool_desc'), ...]`
+
+**Features**:
+- Automatic space creation if needed
+- Batch embedding generation for tool descriptions
+- Data deduplication by app name
+- Bulk insertion for efficiency
+
+```python
+# Define tools for an application
+tool_catalog = [
+    ('my_app', 'data_agent', 'csv_reader', 'Read and parse CSV files with automatic type detection'),
+    ('my_app', 'data_agent', 'json_parser', 'Parse JSON documents and extract structured data'),
+    ('my_app', 'api_agent', 'http_client', 'Make HTTP requests with authentication and retry logic'),
+    ('my_app', 'api_agent', 'rest_client', 'Interact with REST APIs using standard HTTP methods'),
+    ('my_app', 'ml_agent', 'model_trainer', 'Train machine learning models with hyperparameter tuning')
+]
+
+# Initialize tool system
+await vearch.create_vearch_table_by_tool_list(tool_catalog)
+print("Tool system initialized with semantic search capabilities")
+```
+
+### async tool_retrieval(query, app_name=None, agent_name=None, top_k=5, threshold=0.01)
+
+Retrieves relevant tools based on semantic query with filtering options.
+
+**Parameters**:
+- `query` (str): Description of desired tool functionality
+- `app_name` (str, optional): Filter by application name
+- `agent_name` (str, optional): Filter by agent name  
+- `top_k` (int): Maximum number of tools to return
+- `threshold` (float): Minimum similarity score threshold
+
+**Returns**: List of tool names matching the criteria
+
+**Features**:
+- Semantic matching based on tool descriptions
+- Hierarchical filtering (app -> agent -> tool)
+- Relevance scoring and threshold filtering
+- Production-ready tool discovery
+
+```python
+# Find tools for data processing
+data_tools = await vearch.tool_retrieval(
+    query="process and analyze CSV data files",
+    app_name="my_app",
+    top_k=3,
+    threshold=0.1
+)
+print(f"Recommended tools: {data_tools}")
+# Output: ['csv_reader', 'json_parser']
+
+# Find tools for API interactions
+api_tools = await vearch.tool_retrieval(
+    query="make HTTP requests to REST APIs",
+    app_name="my_app", 
+    agent_name="api_agent",
+    top_k=5
+)
+print(f"API tools: {api_tools}")
+# Output: ['http_client', 'rest_client']
+
+# General tool search without filters
+ml_tools = await vearch.tool_retrieval(
+    query="machine learning model training and optimization",
+    top_k=10,
+    threshold=0.05
+)
+```
+
+## Document Management
+
+### async single_mode_insert_by_text(body, vector_col, space_name)
+
+Inserts a single document with automatic embedding generation.
+
+**Parameters**:
+- `body` (dict): Document data dictionary
+- `vector_col` (str): Field name to generate embedding from
+- `space_name` (str): Target space name
+
+**Returns**: Insert operation response
+
+**Features**:
+- Automatic embedding generation for specified field
+- Vector normalization and conversion
+- Single document insertion
+
+```python
+# Insert document with automatic embedding
+document = {
+    "title": "Introduction to Deep Learning",
+    "content": "Deep learning is a subset of machine learning that uses neural networks...",
+    "author": "John Doe",
+    "category": "AI/ML",
+    "created_date": "2024-09-01"
+}
+
+# Generate embedding from content field
+result = await vearch.single_mode_insert_by_text(
+    body=document,
+    vector_col="content",  # Embed the content field
+    space_name="research_papers"
+)
+
+print(f"Document inserted: {result}")
+```
+
+## Advanced Search Operations
+
+### Embedding-based Search
+
+For cases where you have pre-computed embeddings:
+
+```python
+# Direct embedding search (when embedding function not available)
+import numpy as np
+
+# Pre-computed embedding vector
+document_embedding = np.array([0.1, -0.3, 0.8, ...])  # 1024 dimensions
+
+results = await vearch.emb_search(
+    emb=[document_embedding],
+    retrieval_nums=15,
+    fields=["title", "content", "author"]
+)
+```
+
+### Filtered Search
+
+Combine vector similarity with metadata filtering:
+
+```python
+# Search with filters
+filters = {
+    "category": "technology",
+    "author": "Jane Smith"
+}
+
+filtered_results = await vearch.filter_and_emb_search(
+    emb=[query_embedding],
+    retrieval_nums=20,
+    fields=["title", "abstract", "publication_date"],
+    filter=filters
+)
+```
+
+### Filter-only Search
+
+Search using metadata filters without vector similarity:
+
+```python
+# Pure filter search
+filter_query = {
+    "query": {
+        "filter": [
+            {"term": {"category": "research", "operator": "and"}},
+            {"range": {"publication_date": {"gte": "2024-01-01"}}}
+        ]
+    },
+    "fields": ["title", "authors", "abstract"],
+    "size": 100
+}
+
+filter_results = await vearch.search_by_filter(
+    space_name="academic_papers", 
+    filter=filter_query
+)
+```
+
+## Production Usage Examples
+
+### Document Search Service
+
+```python
+class DocumentSearchService:
+    def __init__(self, vearch_config):
+        self.vearch = VearchDB(vearch_config)
+        self.doc_space = "document_search"
+    
+    async def initialize(self):
+        """Initialize the document search service."""
+        # Create space if it doesn't exist
+        if not await self.vearch.check_space_exist(self.doc_space):
+            space_config = {
+                "name": self.doc_space,
+                "partition_num": 4,
+                "replica_num": 2,
+                "engine": {
+                    "index_size": 500000,
+                    "retrieval_type": "IVFPQ",
+                    "retrieval_param": {
+                        "metric_type": "InnerProduct",
+                        "ncentroids": 1024,
+                        "nsubvector": 128
+                    }
+                },
+                "properties": {
+                    "title": {"type": "string", "index": True},
+                    "content": {"type": "string"},
+                    "category": {"type": "string", "index": True},
+                    "tags": {"type": "string", "index": True},
+                    "author": {"type": "string", "index": True},
+                    "vector": {"dimension": 1024, "type": "vector"},
+                    "created_date": {"type": "string"},
+                    "url": {"type": "string"}
+                }
+            }
+            await self.vearch.create_space(space_config)
+    
+    async def add_document(self, title, content, metadata):
+        """Add a document to the search index."""
+        document = {
+            "title": title,
+            "content": content,
+            **metadata
+        }
+        
+        # Insert with embedding generation from content
+        return await self.vearch.single_mode_insert_by_text(
+            body=document,
+            vector_col="content",
+            space_name=self.doc_space
+        )
+    
+    async def search_documents(self, query, category=None, author=None, top_k=20):
+        """Search documents with optional filtering."""
+        results = await self.vearch.query_search(
+            space_name=self.doc_space,
+            query=query,
+            retrieval_nums=top_k,
+            fields=["title", "content", "author", "category", "url"],
+            threshold=0.1
+        )
+        
+        # Apply additional filters if specified
+        if category:
+            results = results[results['category'] == category]
+        if author:
+            results = results[results['author'] == author]
+        
+        return results.to_dict('records')
+    
+    async def find_similar_documents(self, reference_text, top_k=10):
+        """Find documents similar to reference text."""
+        return await self.vearch.query_search(
+            space_name=self.doc_space,
+            query=reference_text,
+            retrieval_nums=top_k,
+            fields=["title", "author", "url"],
+            threshold=0.3
+        )
+
+# Usage
+search_service = DocumentSearchService(vearch_config)
+await search_service.initialize()
+
+# Add documents
+await search_service.add_document(
+    title="Machine Learning Best Practices",
+    content="This guide covers essential practices for ML development...",
+    metadata={
+        "author": "AI Research Team",
+        "category": "technical",
+        "tags": "ML, best-practices, development",
+        "created_date": "2024-09-01",
+        "url": "https://docs.example.com/ml-practices"
+    }
+)
+
+# Search documents
+results = await search_service.search_documents(
+    query="machine learning model deployment",
+    category="technical",
+    top_k=15
+)
+```
+
+### AI Tool Discovery Platform
+
+```python
+class AIToolPlatform:
+    def __init__(self, vearch_config):
+        self.vearch = VearchDB({
+            **vearch_config,
+            "tool_df_space_name": "ai_tool_registry"
+        })
+    
+    async def register_application_tools(self, app_name, tools):
+        """Register all tools for an application."""
+        tool_list = []
+        for agent_name, agent_tools in tools.items():
+            for tool_name, tool_desc in agent_tools.items():
+                tool_list.append((app_name, agent_name, tool_name, tool_desc))
+        
+        await self.vearch.create_vearch_table_by_tool_list(tool_list)
+        print(f"Registered {len(tool_list)} tools for {app_name}")
+    
+    async def discover_tools(self, task_description, app_filter=None, limit=10):
+        """Discover tools suitable for a given task."""
+        tools = await self.vearch.tool_retrieval(
+            query=task_description,
+            app_name=app_filter,
+            top_k=limit,
+            threshold=0.05
+        )
+        
+        return {
+            "task": task_description,
+            "recommended_tools": tools,
+            "total_found": len(tools)
+        }
+    
+    async def get_specialized_tools(self, domain, agent_type=None):
+        """Get tools specialized for a specific domain."""
+        return await self.vearch.tool_retrieval(
+            query=f"{domain} domain specific tools and utilities",
+            agent_name=agent_type,
+            top_k=20,
+            threshold=0.1
+        )
+
+# Usage
+tool_platform = AIToolPlatform(vearch_config)
+
+# Register tools for different applications
+data_app_tools = {
+    "data_processor": {
+        "csv_analyzer": "Analyze CSV files for data quality and statistics",
+        "json_validator": "Validate JSON structure and schema compliance",
+        "data_cleaner": "Clean and preprocess raw data for analysis"
+    },
+    "ml_engineer": {
+        "model_trainer": "Train ML models with automated hyperparameter tuning",
+        "feature_selector": "Automatically select relevant features for models",
+        "model_evaluator": "Comprehensive model performance evaluation"
+    }
+}
+
+await tool_platform.register_application_tools("DataAnalytics", data_app_tools)
+
+# Discover tools for specific tasks
+file_tools = await tool_platform.discover_tools(
+    "parse and analyze structured data files",
+    app_filter="DataAnalytics"
+)
+print(f"File processing tools: {file_tools['recommended_tools']}")
+
+ml_tools = await tool_platform.discover_tools(
+    "machine learning model development and evaluation"
+)
+print(f"ML tools: {ml_tools['recommended_tools']}")
+```
+
+## Low-Level Operations
+
+The VearchDB class also provides access to low-level operations through the `VectorToolAsync` helper:
+
+### Database Management
+
+```python
+# Create database
+await vearch.vearch_tools.create_db(
+    master_url="http://vearch-master:8817",
+    db_name="new_database"
+)
+
+# Get cluster health
+health = await vearch.vearch_tools.get_cluster_health(
+    master_url="http://vearch-master:8817"
+)
+print(f"Cluster status: {health}")
+
+# Check document count in space
+doc_count = await vearch.vearch_tools.check_doc_num(
+    master_url="http://vearch-master:8817",
+    db_name="my_db",
+    space_name="my_space"
+)
+print(f"Documents in space: {doc_count}")
+```
+
+### Bulk Operations
+
+```python
+# Bulk insert documents
+documents = [
+    {"title": "Doc 1", "content": "Content 1", "vector": {"feature": [...]}},
+    {"title": "Doc 2", "content": "Content 2", "vector": {"feature": [...]}}
+]
+
+# Convert to NDJSON format
+bulk_data = ""
+for doc in documents:
+    bulk_data += json.dumps({"index": {"_id": "generated_id"}}) + "\n"
+    bulk_data += json.dumps(doc) + "\n"
+
+# Insert batch
+result = await vearch.vearch_tools.insert_batch(
+    db_name="my_db",
+    space_name="my_space", 
+    router_url="http://vearch-router:9001",
+    data_list=bulk_data
+)
+```
+
+## Configuration and Deployment
+
+### Production Configuration
+
+```python
+# Production-ready configuration
+production_config = {
+    "master_url": "http://vearch-master-lb:8817",
+    "router_url": "http://vearch-router-lb:9001",
+    "db_name": "production_vectors",
+    "embedding_model_url": "http://embedding-service:8080/v2/models/embedding/infer",
+    "tool_df_space_name": "production_tools"
+}
+
+# Environment-based configuration
+import os
+
+config = {
+    "master_url": os.getenv("VEARCH_MASTER_URL", "http://localhost:8817"),
+    "router_url": os.getenv("VEARCH_ROUTER_URL", "http://localhost:9001"),
+    "db_name": os.getenv("VEARCH_DB_NAME", "default"),
+    "embedding_model_url": os.getenv("EMBEDDING_SERVICE_URL")
+}
+```
+
+### Health Monitoring
+
+```python
+class VearchHealthMonitor:
+    def __init__(self, vearch: VearchDB):
+        self.vearch = vearch
+    
+    async def comprehensive_health_check(self):
+        """Perform comprehensive health check."""
+        try:
+            # Check cluster health
+            cluster_health = await self.vearch.vearch_tools.get_cluster_health(
+                self.vearch.config.master_url
+            )
+            
+            # Check if critical spaces exist
+            tool_space_exists = await self.vearch.check_space_exist(
+                self.vearch.config.tool_df_space_name
+            )
+            
+            # Test search functionality
+            test_results = await self.vearch.query_search(
+                space_name=self.vearch.config.tool_df_space_name,
+                query="test health check",
+                retrieval_nums=1
+            )
+            
+            return {
+                "status": "healthy",
+                "cluster_health": cluster_health,
+                "tool_space_exists": tool_space_exists,
+                "search_functional": len(test_results) >= 0
+            }
+            
+        except Exception as e:
+            return {
+                "status": "unhealthy",
+                "error": str(e)
+            }
+
+# Usage
+monitor = VearchHealthMonitor(vearch)
+health_status = await monitor.comprehensive_health_check()
+print(f"System health: {health_status}")
+```
+
+## Error Handling
+
+VearchDB includes comprehensive error handling for various failure scenarios:
+
+```python
+class RobustVearchOperations:
+    def __init__(self, vearch: VearchDB):
+        self.vearch = vearch
+    
+    async def safe_search(self, space_name, query, **kwargs):
+        """Search with comprehensive error handling."""
+        try:
+            if not await self.vearch.check_space_exist(space_name):
+                return {"error": "Space does not exist", "results": []}
+            
+            results = await self.vearch.query_search(
+                space_name=space_name,
+                query=query,
+                **kwargs
+            )
+            
+            return {"success": True, "results": results.to_dict('records')}
+            
+        except Exception as e:
+            logger.error(f"Search failed for space {space_name}: {e}")
+            return {"error": str(e), "results": []}
+    
+    async def safe_tool_registration(self, tool_list):
+        """Register tools with error handling."""
+        try:
+            await self.vearch.create_vearch_table_by_tool_list(tool_list)
+            return {"success": True, "registered": len(tool_list)}
+        except Exception as e:
+            logger.error(f"Tool registration failed: {e}")
+            return {"success": False, "error": str(e)}
+```
+
+## Performance Optimization
+
+### Batch Processing
+
+```python
+async def batch_document_processing(vearch: VearchDB, documents, batch_size=100):
+    """Process documents in batches for optimal performance."""
+    results = []
+    
+    for i in range(0, len(documents), batch_size):
+        batch = documents[i:i + batch_size]
+        
+        # Generate embeddings for batch
+        texts = [doc['content'] for doc in batch]
+        embeddings = await vearch.emb_func(texts) if vearch.emb_func else None
+        
+        if embeddings is not None:
+            # Add embeddings to documents
+            for doc, embedding in zip(batch, embeddings):
+                doc['vector'] = {"feature": embedding.tolist()}
+        
+        # Process batch
+        batch_results = await process_document_batch(vearch, batch)
+        results.extend(batch_results)
+        
+        # Add delay to prevent overwhelming the system
+        await asyncio.sleep(0.1)
+    
+    return results
+```
+
+## See Also
+
+- [BaseVectorDB](./base-vector-db) - Abstract base class interface
+- [BaseDB](./base-db) - Parent class providing retry mechanisms
+- [Embedding Services](../embedding) - Text embedding and vector generation
+- [Database Services Overview](./index) - Complete database services documentation
+- [Vearch Documentation](https://vearch.readthedocs.io/) - Official Vearch documentation

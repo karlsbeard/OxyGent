@@ -1,0 +1,15 @@
+{
+  "pages": [
+    "index",
+    "---Core Schemas---",
+    "oxy",
+    "memory",
+    "---Service Integration---",
+    "llm",
+    "web",
+    "---Execution & Monitoring---",
+    "observation",
+    "---Utilities---",
+    "color"
+  ]
+}

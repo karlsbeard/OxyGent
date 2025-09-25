@@ -1,0 +1,711 @@
+---
+title: Observation Schema
+description: Pydantic models for multimodal observation and execution result tracking in the OxyGent framework
+---
+
+# Observation Schema
+
+The Observation schema module provides Pydantic models for tracking execution results and managing multimodal observations in the OxyGent framework. It enables structured collection and representation of tool execution outputs with support for text and multimedia content.
+
+## Overview
+
+The Observation schema consists of two main components:
+
+- **ExecResult**: Represents individual execution results from tools or agents
+- **Observation**: Aggregates multiple execution results for multimodal processing
+
+These schemas facilitate comprehensive tracking of agent workflows, tool executions, and their results, supporting both text-based and multimodal content handling.
+
+## Import
+
+```python
+from oxygent.schemas import ExecResult, Observation
+```
+
+## Dependencies
+
+The observation module imports several internal utilities and schemas:
+
+```python
+from oxygent.utils.common_utils import process_attachments, to_json
+from oxygent.schemas.oxy import OxyOutput, OxyResponse
+```
+
+## Schema Definitions
+
+### ExecResult
+
+A Pydantic model representing the result of a single execution.
+
+```python
+from pydantic import BaseModel
+
+class ExecResult(BaseModel):
+    executor: str
+    oxy_response: OxyResponse
+```
+
+#### Field Specifications
+
+##### executor
+- **Type**: `str`
+- **Required**: Yes
+- **Description**: Name or identifier of the executor (tool/agent) that produced the result
+- **Examples**: `"search_tool"`, `"calculator"`, `"file_manager"`
+
+##### oxy_response
+- **Type**: `OxyResponse`
+- **Required**: Yes
+- **Description**: The complete response object from the executed tool/agent
+- **Contains**: State, output, metadata, and request context
+
+### Observation
+
+A Pydantic model for collecting and managing multiple execution results with multimodal support.
+
+```python
+from typing import List
+from pydantic import BaseModel, Field
+
+class Observation(BaseModel):
+    exec_results: List[ExecResult] = Field(default_factory=list)
+```
+
+#### Field Specifications
+
+##### exec_results
+- **Type**: `List[ExecResult]`
+- **Default**: `[]` (empty list)
+- **Description**: Collection of execution results from various tools/agents
+- **Usage**: Accumulates results from multiple tool executions in a workflow
+
+## Methods
+
+### Observation Methods
+
+#### add_exec_result(exec_result: ExecResult) -> None
+
+Appends a new execution result to the observation's collection.
+
+**Parameters**:
+- `exec_result`: The ExecResult instance to add
+
+**Returns**: None (modifies the observation in-place)
+
+```python
+from oxygent.schemas import Observation, ExecResult, OxyResponse, OxyState
+
+observation = Observation()
+
+# Create an execution result
+exec_result = ExecResult(
+    executor="search_tool",
+    oxy_response=OxyResponse(
+        state=OxyState.COMPLETED,
+        output="Search results found: 5 items"
+    )
+)
+
+# Add to observation
+observation.add_exec_result(exec_result)
+print(f"Total results: {len(observation.exec_results)}")
+```
+
+#### to_str() -> str
+
+Converts all execution results to a formatted string representation.
+
+**Returns**: `str` - Concatenated string of all execution results
+
+**Format**: Each result is prefixed with "Tool [{executor}] execution result: {output}"
+
+```python
+from oxygent.schemas import Observation, ExecResult, OxyResponse, OxyState, OxyOutput
+
+observation = Observation()
+
+# Add multiple results
+results = [
+    ExecResult(
+        executor="search_tool",
+        oxy_response=OxyResponse(state=OxyState.COMPLETED, output="Found 3 articles")
+    ),
+    ExecResult(
+        executor="calculator", 
+        oxy_response=OxyResponse(
+            state=OxyState.COMPLETED,
+            output=OxyOutput(result="42", attachments=[])
+        )
+    )
+]
+
+for result in results:
+    observation.add_exec_result(result)
+
+formatted_output = observation.to_str()
+print(formatted_output)
+# Output:
+# Tool [search_tool] execution result: Found 3 articles
+# 
+# Tool [calculator] execution result: 42
+```
+
+#### to_content(is_multimodal_supported: bool) -> Union[str, List[dict]]
+
+Converts execution results to content format with multimodal support.
+
+**Parameters**:
+- `is_multimodal_supported`: Whether the target system supports multimodal content
+
+**Returns**: 
+- `str`: Plain text if multimodal is not supported or no attachments present
+- `List[dict]`: Structured content array with text and attachments if multimodal is supported
+
+```python
+from oxygent.schemas import Observation, ExecResult, OxyResponse, OxyState, OxyOutput
+
+observation = Observation()
+
+# Add result with attachments
+exec_result = ExecResult(
+    executor="image_analyzer",
+    oxy_response=OxyResponse(
+        state=OxyState.COMPLETED,
+        output=OxyOutput(
+            result="Analysis complete: Found 2 objects",
+            attachments=[
+                {"type": "image", "url": "http://example.com/image1.jpg"},
+                {"type": "data", "content": "metadata.json"}
+            ]
+        )
+    )
+)
+
+observation.add_exec_result(exec_result)
+
+# Multimodal supported
+multimodal_content = observation.to_content(is_multimodal_supported=True)
+print(f"Multimodal content: {multimodal_content}")
+
+# Multimodal not supported
+text_content = observation.to_content(is_multimodal_supported=False)
+print(f"Text content: {text_content}")
+```
+
+## Usage Examples
+
+### Basic Observation Workflow
+
+```python
+from oxygent.schemas import Observation, ExecResult, OxyResponse, OxyState
+
+# Create observation for tracking workflow
+workflow_observation = Observation()
+
+# Simulate tool executions
+tools_executed = [
+    ("user_input_processor", "Processed user query: 'Find weather in NYC'"),
+    ("location_extractor", "Extracted location: New York City, NY"),
+    ("weather_api", "Current weather: 72°F, Sunny"),
+    ("response_formatter", "Formatted response for user display")
+]
+
+for tool_name, result_text in tools_executed:
+    exec_result = ExecResult(
+        executor=tool_name,
+        oxy_response=OxyResponse(
+            state=OxyState.COMPLETED,
+            output=result_text
+        )
+    )
+    workflow_observation.add_exec_result(exec_result)
+
+# Get formatted summary
+summary = workflow_observation.to_str()
+print("Workflow Summary:")
+print(summary)
+
+print(f"\nTotal tools executed: {len(workflow_observation.exec_results)}")
+```
+
+### Multimodal Content Handling
+
+```python
+from oxygent.schemas import Observation, ExecResult, OxyResponse, OxyState, OxyOutput
+
+# Create observation for multimodal workflow
+multimodal_observation = Observation()
+
+# Add text-based result
+text_result = ExecResult(
+    executor="text_analyzer",
+    oxy_response=OxyResponse(
+        state=OxyState.COMPLETED,
+        output="Text analysis complete: 250 words, positive sentiment"
+    )
+)
+
+# Add result with attachments
+media_result = ExecResult(
+    executor="media_processor",
+    oxy_response=OxyResponse(
+        state=OxyState.COMPLETED,
+        output=OxyOutput(
+            result="Generated visualization chart",
+            attachments=[
+                {
+                    "type": "image",
+                    "url": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==",
+                    "title": "Sentiment Analysis Chart"
+                },
+                {
+                    "type": "document",
+                    "url": "http://example.com/analysis_report.pdf",
+                    "title": "Detailed Analysis Report"
+                }
+            ]
+        )
+    )
+)
+
+multimodal_observation.add_exec_result(text_result)
+multimodal_observation.add_exec_result(media_result)
+
+# Generate content for multimodal-capable system
+multimodal_content = multimodal_observation.to_content(is_multimodal_supported=True)
+print("Multimodal content structure:")
+for item in multimodal_content:
+    print(f"  Type: {item.get('type', 'unknown')}")
+    if item.get('type') == 'text':
+        print(f"    Text: {item['text'][:50]}...")
+    else:
+        print(f"    Content: {str(item)[:50]}...")
+
+# Generate content for text-only system
+text_content = multimodal_observation.to_content(is_multimodal_supported=False)
+print(f"\nText-only content: {text_content[:100]}...")
+```
+
+### Error Handling in Observations
+
+```python
+from oxygent.schemas import Observation, ExecResult, OxyResponse, OxyState
+
+# Create observation with mixed success/failure results
+mixed_observation = Observation()
+
+execution_results = [
+    ("validator", OxyState.COMPLETED, "Input validation passed"),
+    ("database_query", OxyState.FAILED, "Connection timeout after 30 seconds"),
+    ("cache_lookup", OxyState.COMPLETED, "Cache hit: returning cached result"),
+    ("fallback_service", OxyState.COMPLETED, "Fallback data retrieved successfully")
+]
+
+for executor, state, output in execution_results:
+    exec_result = ExecResult(
+        executor=executor,
+        oxy_response=OxyResponse(state=state, output=output)
+    )
+    mixed_observation.add_exec_result(exec_result)
+
+# Analyze execution results
+def analyze_observation(observation: Observation):
+    """Analyze observation for success/failure patterns."""
+    total_executions = len(observation.exec_results)
+    successful = sum(1 for result in observation.exec_results 
+                    if result.oxy_response.state == OxyState.COMPLETED)
+    failed = sum(1 for result in observation.exec_results 
+                if result.oxy_response.state == OxyState.FAILED)
+    
+    print(f"Execution Analysis:")
+    print(f"  Total executions: {total_executions}")
+    print(f"  Successful: {successful}")
+    print(f"  Failed: {failed}")
+    print(f"  Success rate: {(successful/total_executions)*100:.1f}%")
+    
+    # List failed executions
+    if failed > 0:
+        print("\nFailed executions:")
+        for result in observation.exec_results:
+            if result.oxy_response.state == OxyState.FAILED:
+                print(f"  - {result.executor}: {result.oxy_response.output}")
+
+analyze_observation(mixed_observation)
+```
+
+### Chaining Observations
+
+```python
+from oxygent.schemas import Observation, ExecResult, OxyResponse, OxyState
+
+class ObservationChain:
+    """Chain multiple observations for complex workflows."""
+    
+    def __init__(self, name: str):
+        self.name = name
+        self.observations: List[Observation] = []
+    
+    def add_observation(self, observation: Observation):
+        """Add an observation to the chain."""
+        self.observations.append(observation)
+    
+    def get_all_results(self) -> List[ExecResult]:
+        """Get all execution results from all observations."""
+        all_results = []
+        for observation in self.observations:
+            all_results.extend(observation.exec_results)
+        return all_results
+    
+    def get_summary(self) -> str:
+        """Get summary of entire observation chain."""
+        all_results = self.get_all_results()
+        
+        summary_lines = [f"Observation Chain: {self.name}"]
+        summary_lines.append(f"Total observations: {len(self.observations)}")
+        summary_lines.append(f"Total executions: {len(all_results)}")
+        summary_lines.append("")
+        
+        for i, observation in enumerate(self.observations):
+            summary_lines.append(f"Observation {i+1}:")
+            for result in observation.exec_results:
+                state_str = result.oxy_response.state.name
+                summary_lines.append(f"  [{state_str}] {result.executor}: {str(result.oxy_response.output)[:50]}...")
+            summary_lines.append("")
+        
+        return "\n".join(summary_lines)
+
+# Usage example
+chain = ObservationChain("User Query Processing")
+
+# Phase 1: Input processing
+phase1 = Observation()
+phase1.add_exec_result(ExecResult(
+    executor="input_sanitizer",
+    oxy_response=OxyResponse(state=OxyState.COMPLETED, output="Input sanitized")
+))
+phase1.add_exec_result(ExecResult(
+    executor="intent_classifier",
+    oxy_response=OxyResponse(state=OxyState.COMPLETED, output="Intent: weather_query")
+))
+
+# Phase 2: Data retrieval
+phase2 = Observation()
+phase2.add_exec_result(ExecResult(
+    executor="weather_api",
+    oxy_response=OxyResponse(state=OxyState.COMPLETED, output="Weather data retrieved")
+))
+
+# Phase 3: Response generation
+phase3 = Observation()
+phase3.add_exec_result(ExecResult(
+    executor="response_generator",
+    oxy_response=OxyResponse(state=OxyState.COMPLETED, output="Response generated")
+))
+
+chain.add_observation(phase1)
+chain.add_observation(phase2)
+chain.add_observation(phase3)
+
+print(chain.get_summary())
+```
+
+## Advanced Integration Patterns
+
+### Observation Filtering
+
+```python
+from oxygent.schemas import Observation, ExecResult, OxyState
+from typing import List, Callable
+
+class ObservationFilter:
+    """Filter and analyze execution results."""
+    
+    @staticmethod
+    def filter_by_state(observation: Observation, state: OxyState) -> List[ExecResult]:
+        """Filter results by execution state."""
+        return [result for result in observation.exec_results 
+                if result.oxy_response.state == state]
+    
+    @staticmethod
+    def filter_by_executor(observation: Observation, executor_pattern: str) -> List[ExecResult]:
+        """Filter results by executor name pattern."""
+        return [result for result in observation.exec_results 
+                if executor_pattern.lower() in result.executor.lower()]
+    
+    @staticmethod
+    def filter_by_custom(observation: Observation, predicate: Callable[[ExecResult], bool]) -> List[ExecResult]:
+        """Filter results by custom predicate function."""
+        return [result for result in observation.exec_results if predicate(result)]
+
+# Usage examples
+observation = Observation()
+# ... add various results ...
+
+filter_helper = ObservationFilter()
+
+# Get only successful executions
+successful_results = filter_helper.filter_by_state(observation, OxyState.COMPLETED)
+print(f"Successful executions: {len(successful_results)}")
+
+# Get results from specific tool category
+api_results = filter_helper.filter_by_executor(observation, "api")
+print(f"API-related executions: {len(api_results)}")
+
+# Custom filter: results with long output
+long_output_results = filter_helper.filter_by_custom(
+    observation, 
+    lambda result: len(str(result.oxy_response.output)) > 100
+)
+print(f"Results with long output: {len(long_output_results)}")
+```
+
+### Observation Metrics
+
+```python
+from oxygent.schemas import Observation, ExecResult, OxyState
+from typing import Dict
+import time
+
+class ObservationMetrics:
+    """Calculate metrics from observations."""
+    
+    def __init__(self):
+        self.start_time = time.time()
+    
+    def calculate_metrics(self, observation: Observation) -> Dict:
+        """Calculate comprehensive metrics for an observation."""
+        if not observation.exec_results:
+            return {"error": "No execution results to analyze"}
+        
+        total_results = len(observation.exec_results)
+        
+        # State distribution
+        state_counts = {}
+        for state in OxyState:
+            count = sum(1 for result in observation.exec_results 
+                       if result.oxy_response.state == state)
+            if count > 0:
+                state_counts[state.name] = count
+        
+        # Executor analysis
+        executor_counts = {}
+        for result in observation.exec_results:
+            executor = result.executor
+            executor_counts[executor] = executor_counts.get(executor, 0) + 1
+        
+        # Success rate
+        successful = state_counts.get('COMPLETED', 0)
+        success_rate = (successful / total_results) * 100 if total_results > 0 else 0
+        
+        # Output length analysis
+        output_lengths = []
+        for result in observation.exec_results:
+            output_str = str(result.oxy_response.output)
+            output_lengths.append(len(output_str))
+        
+        avg_output_length = sum(output_lengths) / len(output_lengths) if output_lengths else 0
+        max_output_length = max(output_lengths) if output_lengths else 0
+        min_output_length = min(output_lengths) if output_lengths else 0
+        
+        return {
+            "total_executions": total_results,
+            "state_distribution": state_counts,
+            "executor_usage": executor_counts,
+            "success_rate_percent": round(success_rate, 2),
+            "output_stats": {
+                "average_length": round(avg_output_length, 2),
+                "max_length": max_output_length,
+                "min_length": min_output_length
+            },
+            "unique_executors": len(executor_counts),
+            "analysis_timestamp": time.time()
+        }
+
+# Usage
+metrics_calculator = ObservationMetrics()
+observation = Observation()
+
+# ... populate observation with results ...
+
+metrics = metrics_calculator.calculate_metrics(observation)
+print("Observation Metrics:")
+for key, value in metrics.items():
+    print(f"  {key}: {value}")
+```
+
+## Testing Observations
+
+```python
+import pytest
+from oxygent.schemas import Observation, ExecResult, OxyResponse, OxyState, OxyOutput
+
+class TestObservationSchema:
+    """Test cases for Observation schema."""
+    
+    def test_empty_observation(self):
+        """Test empty observation creation."""
+        observation = Observation()
+        assert len(observation.exec_results) == 0
+        assert observation.to_str() == ""
+    
+    def test_add_exec_result(self):
+        """Test adding execution results."""
+        observation = Observation()
+        
+        exec_result = ExecResult(
+            executor="test_tool",
+            oxy_response=OxyResponse(
+                state=OxyState.COMPLETED,
+                output="Test output"
+            )
+        )
+        
+        observation.add_exec_result(exec_result)
+        assert len(observation.exec_results) == 1
+        assert observation.exec_results[0].executor == "test_tool"
+    
+    def test_to_str_formatting(self):
+        """Test string formatting of observations."""
+        observation = Observation()
+        
+        # Add multiple results
+        results = [
+            ("tool1", "Output 1"),
+            ("tool2", "Output 2")
+        ]
+        
+        for executor, output in results:
+            exec_result = ExecResult(
+                executor=executor,
+                oxy_response=OxyResponse(
+                    state=OxyState.COMPLETED,
+                    output=output
+                )
+            )
+            observation.add_exec_result(exec_result)
+        
+        formatted = observation.to_str()
+        assert "Tool [tool1] execution result: Output 1" in formatted
+        assert "Tool [tool2] execution result: Output 2" in formatted
+    
+    def test_multimodal_content(self):
+        """Test multimodal content generation."""
+        observation = Observation()
+        
+        # Add result with OxyOutput (includes attachments)
+        exec_result = ExecResult(
+            executor="media_tool",
+            oxy_response=OxyResponse(
+                state=OxyState.COMPLETED,
+                output=OxyOutput(
+                    result="Generated image",
+                    attachments=[{"type": "image", "data": "base64_data"}]
+                )
+            )
+        )
+        
+        observation.add_exec_result(exec_result)
+        
+        # Test multimodal supported
+        multimodal_content = observation.to_content(is_multimodal_supported=True)
+        assert isinstance(multimodal_content, list)
+        
+        # Test multimodal not supported
+        text_content = observation.to_content(is_multimodal_supported=False)
+        assert isinstance(text_content, str)
+    
+    def test_observation_with_different_states(self):
+        """Test observation with mixed execution states."""
+        observation = Observation()
+        
+        states_and_outputs = [
+            (OxyState.COMPLETED, "Success output"),
+            (OxyState.FAILED, "Error message"),
+            (OxyState.RUNNING, "In progress")
+        ]
+        
+        for state, output in states_and_outputs:
+            exec_result = ExecResult(
+                executor=f"tool_{state.name}",
+                oxy_response=OxyResponse(state=state, output=output)
+            )
+            observation.add_exec_result(exec_result)
+        
+        assert len(observation.exec_results) == 3
+        formatted = observation.to_str()
+        assert "Success output" in formatted
+        assert "Error message" in formatted
+        assert "In progress" in formatted
+```
+
+## Best Practices
+
+### 1. Structured Result Collection
+
+Organize execution results logically:
+
+```python
+from oxygent.schemas import Observation
+
+# Good: Organize by workflow phases
+preprocessing_observation = Observation()
+processing_observation = Observation()
+postprocessing_observation = Observation()
+
+# Add results to appropriate phases
+# preprocessing_observation.add_exec_result(...)
+```
+
+### 2. Error Context Preservation
+
+Include sufficient context in error results:
+
+```python
+from oxygent.schemas import ExecResult, OxyResponse, OxyState
+
+# Good: Include error context
+error_result = ExecResult(
+    executor="database_connector",
+    oxy_response=OxyResponse(
+        state=OxyState.FAILED,
+        output="Connection failed: Timeout after 30s connecting to db.example.com:5432",
+        extra={
+            "error_code": "TIMEOUT",
+            "host": "db.example.com",
+            "port": 5432,
+            "timeout_seconds": 30
+        }
+    )
+)
+```
+
+### 3. Multimodal Content Handling
+
+Design for both text and multimodal environments:
+
+```python
+from oxygent.schemas import Observation
+
+def render_observation(observation: Observation, supports_multimodal: bool):
+    """Render observation appropriately for the target environment."""
+    content = observation.to_content(supports_multimodal)
+    
+    if supports_multimodal and isinstance(content, list):
+        # Handle rich content
+        return render_rich_content(content)
+    else:
+        # Handle plain text
+        return render_plain_text(content)
+```
+
+## Related Schemas
+
+- **[OxyResponse](./oxy)**: Core response schema used in ExecResult
+- **[OxyOutput](./oxy)**: Output schema with attachment support
+- **[Memory](./memory)**: Message and conversation memory management
+
+## See Also
+
+- [Schema Overview](./index)
+- [Agent Workflow Patterns](../agents/workflows)
+- [Multimodal Content Handling](../utils/multimodal)

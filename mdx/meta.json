@@ -1,0 +1,182 @@
+{
+  "title": "OxyGent Framework",
+  "description": "Comprehensive documentation for the OxyGent AI framework",
+  "pages": [
+    {
+      "title": "Agent System Overview",
+      "description": "Introduction to the OxyGent agent architecture and capabilities",
+      "file": "index"
+    },
+    {
+      "title": "Foundation Agents",
+      "description": "Core agent classes that provide essential functionality",
+      "pages": [
+        {
+          "title": "BaseAgent",
+          "description": "Foundation class with trace management and data persistence",
+          "file": "agents/base-agent"
+        },
+        {
+          "title": "LocalAgent", 
+          "description": "Local execution with tool management and memory capabilities",
+          "file": "agents/local-agent"
+        },
+        {
+          "title": "RemoteAgent",
+          "description": "Foundation for remote system communication",
+          "file": "agents/remote-agent"
+        }
+      ]
+    },
+    {
+      "title": "Specialized Agents",
+      "description": "Purpose-built agents for specific use cases",
+      "pages": [
+        {
+          "title": "ChatAgent",
+          "description": "Conversational agent for dialogue interactions", 
+          "file": "agents/chat-agent"
+        },
+        {
+          "title": "ReActAgent",
+          "description": "Advanced reasoning agent with tool execution capabilities",
+          "file": "agents/react-agent"
+        },
+        {
+          "title": "ParallelAgent",
+          "description": "Team coordination agent for concurrent task execution",
+          "file": "agents/parallel-agent"
+        },
+        {
+          "title": "WorkflowAgent", 
+          "description": "Custom workflow execution agent",
+          "file": "agents/workflow-agent"
+        },
+        {
+          "title": "SSEOxyGent",
+          "description": "Real-time communication via Server-Sent Events",
+          "file": "agents/sse-oxy-agent"
+        }
+      ]
+    },
+    {
+      "title": "Flow System",
+      "description": "Advanced workflow orchestration and execution patterns",
+      "pages": [
+        {
+          "title": "Flows Overview",
+          "description": "Introduction to the OxyGent flow system and workflow patterns",
+          "file": "flows/flows-index"
+        },
+        {
+          "title": "Workflow Flow",
+          "description": "Custom workflow execution for business logic integration",
+          "file": "flows/workflow-flow"
+        },
+        {
+          "title": "Parallel Flow",
+          "description": "Concurrent execution across multiple tools and agents",
+          "file": "flows/parallel-flow"
+        },
+        {
+          "title": "Plan and Solve Flow",
+          "description": "Strategic planning and systematic problem-solving workflows",
+          "file": "flows/plan-and-solve-flow"
+        },
+        {
+          "title": "Reflexion Flow",
+          "description": "Iterative improvement through self-evaluation and refinement",
+          "file": "flows/reflexion-flow"
+        }
+      ]
+    },
+    {
+      "title": "LLM System",
+      "description": "Large Language Model integration system with multimodal support",
+      "pages": [
+        {
+          "title": "LLM Overview",
+          "description": "Complete guide to OxyGent's LLM system architecture and features",
+          "file": "llms/index"
+        },
+        {
+          "title": "BaseLLM",
+          "description": "Core LLM interface with multimodal processing and think message extraction",
+          "file": "llms/base-llm"
+        },
+        {
+          "title": "RemoteLLM",
+          "description": "Remote API base class with authentication and configuration validation",
+          "file": "llms/remote-llm"
+        },
+        {
+          "title": "OpenAILLM",
+          "description": "Official OpenAI integration with advanced features and streaming support",
+          "file": "llms/openai-llm"
+        },
+        {
+          "title": "HttpLLM",
+          "description": "Universal HTTP client supporting multiple LLM providers with auto-detection",
+          "file": "llms/http-llm"
+        }
+      ]
+    },
+    {
+      "title": "Tool System",
+      "description": "Extensible tool ecosystem for enhanced agent capabilities",
+      "pages": [
+        {
+          "title": "Tools Overview",
+          "description": "Introduction to the OxyGent tool system and extensibility",
+          "file": "tools/index"
+        },
+        {
+          "title": "Function Tools",
+          "description": "Convert Python functions into callable agent tools",
+          "file": "tools/function-tools/index"
+        },
+        {
+          "title": "MCP Tools",
+          "description": "Model Context Protocol integration for external tool ecosystems",
+          "file": "tools/mcp-tools/index"
+        },
+        {
+          "title": "API Tools",
+          "description": "HTTP API integration tools for web services and microservices",
+          "file": "tools/api-tools/index"
+        }
+      ]
+    },
+    {
+      "title": "Utility System",
+      "description": "Essential utilities for system operations, data processing, and environment management",
+      "pages": [
+        {
+          "title": "Utils Overview",
+          "description": "Introduction to the OxyGent utility system and core functionality",
+          "file": "utils/index"
+        },
+        {
+          "title": "Common Utils",
+          "description": "File processing, data transformation, and system operation utilities",
+          "file": "utils/common-utils"
+        },
+        {
+          "title": "Data Utils",
+          "description": "Tree building and hierarchical data processing utilities",
+          "file": "utils/data-utils"
+        },
+        {
+          "title": "Environment Utils",
+          "description": "Environment variable management and system configuration utilities",
+          "file": "utils/env-utils"
+        },
+        {
+          "title": "LLM Pydantic Parser",
+          "description": "Structured output parsing for Large Language Model responses",
+          "file": "utils/llm-pydantic-parser"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,32 @@
+{
+  "title": "LLM System",
+  "description": "Large Language Model integration system with support for multiple providers",
+  "icon": "Brain",
+  "pages": [
+    {
+      "title": "Overview",
+      "href": "/llms",
+      "description": "Complete guide to OxyGent's LLM system architecture and features"
+    },
+    {
+      "title": "BaseLLM",
+      "href": "/llms/base-llm", 
+      "description": "Core LLM interface with multimodal processing and think message extraction"
+    },
+    {
+      "title": "RemoteLLM",
+      "href": "/llms/remote-llm",
+      "description": "Remote API base class with authentication and configuration validation"
+    },
+    {
+      "title": "OpenAILLM",
+      "href": "/llms/openai-llm",
+      "description": "Official OpenAI integration with advanced features and streaming support"
+    },
+    {
+      "title": "HttpLLM", 
+      "href": "/llms/http-llm",
+      "description": "Universal HTTP client supporting multiple LLM providers with auto-detection"
+    }
+  ]
+}

@@ -1,0 +1,636 @@
+---
+title: Web Response Schema
+description: Pydantic model for standardized web API responses in the OxyGent framework
+---
+
+# Web Response Schema
+
+The `WebResponse` class is a Pydantic model that provides a standardized format for web API responses in the OxyGent framework. It ensures consistent response structure across all web endpoints with proper status codes, messages, and data payloads.
+
+## Overview
+
+`WebResponse` follows REST API best practices by providing a uniform response structure that includes:
+
+- **Status Code**: HTTP-compatible status codes for response classification
+- **Message**: Human-readable status description
+- **Data**: Flexible payload container for response data
+- **Serialization**: Built-in dictionary conversion for JSON responses
+
+## Import
+
+```python
+from oxygent.schemas import WebResponse
+```
+
+## Class Definition
+
+### WebResponse
+
+A Pydantic BaseModel that standardizes web API response format.
+
+```python
+from pydantic import BaseModel, Field
+
+class WebResponse(BaseModel):
+    code: int = Field(200)
+    message: str = Field("SUCCESS")
+    data: dict = Field(default_factory=dict)
+    
+    def to_dict(self):
+        return self.model_dump()
+```
+
+## Field Specifications
+
+### code
+- **Type**: `int`
+- **Default**: `200`
+- **Description**: HTTP status code indicating response status
+- **Examples**: `200` (Success), `404` (Not Found), `500` (Internal Error)
+
+### message
+- **Type**: `str`
+- **Default**: `"SUCCESS"`
+- **Description**: Human-readable status message
+- **Examples**: `"SUCCESS"`, `"Not Found"`, `"Internal Server Error"`
+
+### data
+- **Type**: `dict`
+- **Default**: `{}` (empty dictionary)
+- **Description**: Response payload containing actual data
+- **Examples**: User objects, lists, metadata, etc.
+
+## Methods
+
+### to_dict()
+
+Converts the WebResponse instance to a dictionary format suitable for JSON serialization.
+
+**Returns**: `dict` - Dictionary representation of the response
+
+```python
+response = WebResponse(code=200, message="User created", data={"user_id": 123})
+response_dict = response.to_dict()
+# Returns: {"code": 200, "message": "User created", "data": {"user_id": 123}}
+```
+
+## Usage Examples
+
+### Basic Success Response
+
+```python
+from oxygent.schemas import WebResponse
+
+# Create successful response
+response = WebResponse(
+    code=200,
+    message="Operation completed successfully",
+    data={"result": "User profile updated", "timestamp": "2024-09-01T12:00:00Z"}
+)
+
+print(response.to_dict())
+# Output: {
+#     "code": 200,
+#     "message": "Operation completed successfully", 
+#     "data": {
+#         "result": "User profile updated",
+#         "timestamp": "2024-09-01T12:00:00Z"
+#     }
+# }
+```
+
+### Error Response
+
+```python
+from oxygent.schemas import WebResponse
+
+# Create error response
+error_response = WebResponse(
+    code=404,
+    message="Resource not found",
+    data={"error_details": "User with ID 456 does not exist"}
+)
+
+print(error_response.to_dict())
+# Output: {
+#     "code": 404,
+#     "message": "Resource not found",
+#     "data": {"error_details": "User with ID 456 does not exist"}
+# }
+```
+
+### Default Response
+
+```python
+from oxygent.schemas import WebResponse
+
+# Create response with defaults
+default_response = WebResponse()
+
+print(default_response.to_dict())
+# Output: {
+#     "code": 200,
+#     "message": "SUCCESS",
+#     "data": {}
+# }
+```
+
+### List Data Response
+
+```python
+from oxygent.schemas import WebResponse
+
+# Response with list data
+users_response = WebResponse(
+    code=200,
+    message="Users retrieved successfully",
+    data={
+        "users": [
+            {"id": 1, "name": "Alice", "email": "alice@example.com"},
+            {"id": 2, "name": "Bob", "email": "bob@example.com"}
+        ],
+        "total": 2,
+        "page": 1,
+        "per_page": 10
+    }
+)
+
+print(users_response.to_dict())
+```
+
+## Common Status Code Patterns
+
+### Success Responses (2xx)
+
+```python
+from oxygent.schemas import WebResponse
+
+# 200 OK - Successful GET, PUT, PATCH
+success_response = WebResponse(
+    code=200,
+    message="SUCCESS",
+    data={"resource": "retrieved"}
+)
+
+# 201 Created - Successful POST
+created_response = WebResponse(
+    code=201,
+    message="Resource created successfully",
+    data={"id": 123, "created_at": "2024-09-01T12:00:00Z"}
+)
+
+# 204 No Content - Successful DELETE
+no_content_response = WebResponse(
+    code=204,
+    message="Resource deleted successfully",
+    data={}
+)
+```
+
+### Client Error Responses (4xx)
+
+```python
+from oxygent.schemas import WebResponse
+
+# 400 Bad Request
+bad_request = WebResponse(
+    code=400,
+    message="Invalid request parameters",
+    data={"errors": ["Email is required", "Password must be at least 8 characters"]}
+)
+
+# 401 Unauthorized
+unauthorized = WebResponse(
+    code=401,
+    message="Authentication required",
+    data={"error": "Invalid or missing authentication token"}
+)
+
+# 403 Forbidden
+forbidden = WebResponse(
+    code=403,
+    message="Access denied",
+    data={"error": "Insufficient permissions to access this resource"}
+)
+
+# 404 Not Found
+not_found = WebResponse(
+    code=404,
+    message="Resource not found",
+    data={"error": "The requested resource does not exist"}
+)
+
+# 422 Unprocessable Entity
+validation_error = WebResponse(
+    code=422,
+    message="Validation failed",
+    data={
+        "errors": {
+            "email": ["Invalid email format"],
+            "age": ["Must be between 18 and 120"]
+        }
+    }
+)
+```
+
+### Server Error Responses (5xx)
+
+```python
+from oxygent.schemas import WebResponse
+
+# 500 Internal Server Error
+server_error = WebResponse(
+    code=500,
+    message="Internal server error",
+    data={"error": "An unexpected error occurred", "request_id": "req_123"}
+)
+
+# 503 Service Unavailable
+service_unavailable = WebResponse(
+    code=503,
+    message="Service temporarily unavailable",
+    data={"error": "Database connection failed", "retry_after": 300}
+)
+```
+
+## FastAPI Integration
+
+The WebResponse schema integrates seamlessly with FastAPI applications:
+
+```python
+from fastapi import FastAPI, HTTPException
+from oxygent.schemas import WebResponse
+
+app = FastAPI()
+
+@app.get("/users/{user_id}", response_model=WebResponse)
+async def get_user(user_id: int):
+    """Get user by ID."""
+    try:
+        # Simulate user lookup
+        if user_id == 404:
+            return WebResponse(
+                code=404,
+                message="User not found",
+                data={"error": f"User with ID {user_id} does not exist"}
+            )
+        
+        # Return successful response
+        return WebResponse(
+            code=200,
+            message="User retrieved successfully",
+            data={
+                "user": {
+                    "id": user_id,
+                    "name": "John Doe",
+                    "email": "john@example.com"
+                }
+            }
+        )
+    
+    except Exception as e:
+        return WebResponse(
+            code=500,
+            message="Internal server error",
+            data={"error": str(e)}
+        )
+
+@app.post("/users", response_model=WebResponse)
+async def create_user(user_data: dict):
+    """Create a new user."""
+    try:
+        # Simulate user creation
+        user_id = 123
+        
+        return WebResponse(
+            code=201,
+            message="User created successfully",
+            data={
+                "user": {
+                    "id": user_id,
+                    "name": user_data.get("name"),
+                    "email": user_data.get("email")
+                }
+            }
+        )
+    
+    except Exception as e:
+        return WebResponse(
+            code=500,
+            message="Failed to create user",
+            data={"error": str(e)}
+        )
+```
+
+## Response Builder Pattern
+
+Create helper functions for common response patterns:
+
+```python
+from oxygent.schemas import WebResponse
+from typing import Any, Optional
+
+class ResponseBuilder:
+    """Helper class for building standardized WebResponse objects."""
+    
+    @staticmethod
+    def success(data: Optional[dict] = None, message: str = "SUCCESS") -> WebResponse:
+        """Build success response."""
+        return WebResponse(
+            code=200,
+            message=message,
+            data=data or {}
+        )
+    
+    @staticmethod
+    def created(data: Optional[dict] = None, message: str = "Resource created successfully") -> WebResponse:
+        """Build created response."""
+        return WebResponse(
+            code=201,
+            message=message,
+            data=data or {}
+        )
+    
+    @staticmethod
+    def not_found(message: str = "Resource not found", details: Optional[str] = None) -> WebResponse:
+        """Build not found response."""
+        data = {"error": details} if details else {}
+        return WebResponse(
+            code=404,
+            message=message,
+            data=data
+        )
+    
+    @staticmethod
+    def bad_request(message: str = "Invalid request", errors: Optional[dict] = None) -> WebResponse:
+        """Build bad request response."""
+        data = {"errors": errors} if errors else {}
+        return WebResponse(
+            code=400,
+            message=message,
+            data=data
+        )
+    
+    @staticmethod
+    def server_error(message: str = "Internal server error", error_details: Optional[str] = None) -> WebResponse:
+        """Build server error response."""
+        data = {"error": error_details} if error_details else {}
+        return WebResponse(
+            code=500,
+            message=message,
+            data=data
+        )
+
+# Usage examples
+response_builder = ResponseBuilder()
+
+# Success with data
+success_resp = response_builder.success(
+    data={"users": [{"id": 1, "name": "Alice"}]},
+    message="Users retrieved successfully"
+)
+
+# Error responses
+not_found_resp = response_builder.not_found(
+    message="User not found",
+    details="User with ID 456 does not exist"
+)
+
+validation_resp = response_builder.bad_request(
+    message="Validation failed",
+    errors={"email": ["Invalid format"], "password": ["Too short"]}
+)
+```
+
+## Pagination Response Pattern
+
+Extend WebResponse for paginated results:
+
+```python
+from oxygent.schemas import WebResponse
+from typing import List, Any
+
+class PaginatedWebResponse(WebResponse):
+    """Extended WebResponse for paginated data."""
+    
+    @classmethod
+    def paginated(
+        cls,
+        items: List[Any],
+        page: int,
+        per_page: int,
+        total_items: int,
+        message: str = "Data retrieved successfully"
+    ) -> "WebResponse":
+        """Create paginated response."""
+        total_pages = (total_items + per_page - 1) // per_page
+        
+        return cls(
+            code=200,
+            message=message,
+            data={
+                "items": items,
+                "pagination": {
+                    "page": page,
+                    "per_page": per_page,
+                    "total_items": total_items,
+                    "total_pages": total_pages,
+                    "has_next": page < total_pages,
+                    "has_prev": page > 1
+                }
+            }
+        )
+
+# Usage
+paginated_response = PaginatedWebResponse.paginated(
+    items=[{"id": 1, "name": "Alice"}, {"id": 2, "name": "Bob"}],
+    page=1,
+    per_page=10,
+    total_items=25,
+    message="Users retrieved successfully"
+)
+
+print(paginated_response.to_dict())
+```
+
+## Validation and Error Handling
+
+Handle Pydantic validation errors gracefully:
+
+```python
+from oxygent.schemas import WebResponse
+from pydantic import ValidationError
+from typing import Dict, Any
+
+def create_response_from_data(data: Dict[str, Any]) -> WebResponse:
+    """Create WebResponse with validation error handling."""
+    try:
+        return WebResponse(**data)
+    except ValidationError as e:
+        # Return validation error as WebResponse
+        return WebResponse(
+            code=422,
+            message="Invalid response data",
+            data={"validation_errors": e.errors()}
+        )
+
+# Usage
+valid_data = {"code": 200, "message": "OK", "data": {"result": "success"}}
+invalid_data = {"code": "invalid", "message": 123}  # Invalid types
+
+valid_response = create_response_from_data(valid_data)
+invalid_response = create_response_from_data(invalid_data)
+
+print(valid_response.to_dict())
+print(invalid_response.to_dict())
+```
+
+## JSON Serialization
+
+WebResponse integrates with JSON serialization libraries:
+
+```python
+import json
+from oxygent.schemas import WebResponse
+
+# Create response
+response = WebResponse(
+    code=200,
+    message="Data retrieved",
+    data={"items": [1, 2, 3], "count": 3}
+)
+
+# Serialize to JSON
+json_string = json.dumps(response.to_dict())
+print(json_string)
+
+# Deserialize from JSON
+json_data = json.loads(json_string)
+restored_response = WebResponse(**json_data)
+print(restored_response.to_dict())
+```
+
+## Testing with WebResponse
+
+Use WebResponse in unit tests:
+
+```python
+import pytest
+from oxygent.schemas import WebResponse
+
+class TestWebResponse:
+    """Test cases for WebResponse schema."""
+    
+    def test_default_response(self):
+        """Test default WebResponse creation."""
+        response = WebResponse()
+        
+        assert response.code == 200
+        assert response.message == "SUCCESS"
+        assert response.data == {}
+    
+    def test_custom_response(self):
+        """Test WebResponse with custom values."""
+        response = WebResponse(
+            code=201,
+            message="Created",
+            data={"id": 123}
+        )
+        
+        assert response.code == 201
+        assert response.message == "Created"
+        assert response.data == {"id": 123}
+    
+    def test_to_dict_conversion(self):
+        """Test to_dict method."""
+        response = WebResponse(
+            code=404,
+            message="Not Found",
+            data={"error": "Resource missing"}
+        )
+        
+        expected_dict = {
+            "code": 404,
+            "message": "Not Found",
+            "data": {"error": "Resource missing"}
+        }
+        
+        assert response.to_dict() == expected_dict
+    
+    def test_response_builder_patterns(self):
+        """Test response builder patterns."""
+        success_resp = ResponseBuilder.success({"result": "OK"})
+        error_resp = ResponseBuilder.not_found("User not found")
+        
+        assert success_resp.code == 200
+        assert error_resp.code == 404
+        assert error_resp.data["error"] == "User not found"
+```
+
+## Best Practices
+
+### 1. Consistent Status Codes
+
+Use standard HTTP status codes consistently:
+
+```python
+from oxygent.schemas import WebResponse
+
+# Good: Standard HTTP codes
+success = WebResponse(code=200, message="SUCCESS")
+not_found = WebResponse(code=404, message="Not Found") 
+server_error = WebResponse(code=500, message="Internal Server Error")
+
+# Avoid: Custom or non-standard codes
+# custom = WebResponse(code=999, message="Custom Error")  # Not recommended
+```
+
+### 2. Meaningful Messages
+
+Provide clear, actionable error messages:
+
+```python
+from oxygent.schemas import WebResponse
+
+# Good: Descriptive messages
+good_response = WebResponse(
+    code=400,
+    message="Invalid email format",
+    data={"field": "email", "provided": "invalid-email"}
+)
+
+# Avoid: Vague messages
+# bad_response = WebResponse(code=400, message="Error")  # Too vague
+```
+
+### 3. Structured Error Data
+
+Include structured error information in the data field:
+
+```python
+from oxygent.schemas import WebResponse
+
+validation_response = WebResponse(
+    code=422,
+    message="Validation failed",
+    data={
+        "errors": [
+            {"field": "email", "message": "Invalid format"},
+            {"field": "password", "message": "Too short"}
+        ],
+        "error_count": 2
+    }
+)
+```
+
+## Related Schemas
+
+- **[LLMResponse](./llm)**: LLM-specific response schema with state management
+- **[OxyResponse](./oxy)**: Core framework response schema 
+- **[Color](./color)**: Terminal color representation for logging
+
+## See Also
+
+- [Schema Overview](./index)
+- [API Response Standards](../api/responses)
+- [Error Handling Patterns](../patterns/error-handling)

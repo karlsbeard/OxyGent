@@ -1,0 +1,1178 @@
+---
+title: Memory Schema
+description: Pydantic models for chat messages, tool calls, and conversation memory management in the OxyGent framework
+---
+
+# Memory Schema
+
+The Memory schema module provides comprehensive Pydantic models for managing chat conversations, tool calls, and conversation memory in the OxyGent framework. It supports OpenAI-compatible message formats, function calling, and sliding window memory management for conversational AI applications.
+
+## Overview
+
+The Memory schema consists of several interconnected components:
+
+- **Function & ToolCall**: Models for representing function/tool calls in conversations
+- **Message**: Comprehensive chat message model supporting multiple roles and content types
+- **Memory**: Sliding window memory management for conversation history
+
+These schemas ensure compatibility with OpenAI Chat Completions API while providing flexible memory management and conversation tracking capabilities.
+
+## Import
+
+```python
+from oxygent.schemas import Message, Memory
+```
+
+## Schema Definitions
+
+### Function
+
+Represents a function call in the OpenAI Chat Completions format.
+
+```python
+from pydantic import BaseModel
+
+class Function(BaseModel):
+    name: str
+    arguments: str
+```
+
+#### Field Specifications
+
+##### name
+- **Type**: `str`
+- **Required**: Yes
+- **Description**: Name of the function/tool to be called
+- **Examples**: `"search_web"`, `"calculate"`, `"send_email"`
+
+##### arguments
+- **Type**: `str`
+- **Required**: Yes
+- **Description**: JSON string containing function arguments
+- **Examples**: `'{"query": "weather in NYC"}'`, `'{"expression": "2+2"}'`
+
+### ToolCall
+
+Represents a complete tool/function call with metadata.
+
+```python
+from pydantic import BaseModel
+
+class ToolCall(BaseModel):
+    id: str
+    type: str = "function"
+    function: Function
+```
+
+#### Field Specifications
+
+##### id
+- **Type**: `str`
+- **Required**: Yes
+- **Description**: Unique identifier for the tool call
+- **Examples**: `"call_123"`, `"tool_abc_456"`
+
+##### type
+- **Type**: `str`
+- **Default**: `"function"`
+- **Description**: Type of tool call (typically "function")
+
+##### function
+- **Type**: `Function`
+- **Required**: Yes
+- **Description**: Function definition with name and arguments
+
+### Message
+
+Comprehensive chat message model supporting multiple roles and content types.
+
+```python
+from typing import Any, List, Literal, Optional, Union
+from pydantic import BaseModel, Field
+
+class Message(BaseModel):
+    role: Literal["system", "user", "assistant", "tool"] = Field(...)
+    content: Optional[Union[str, list]] = Field(default=None)
+    tool_calls: Optional[List[ToolCall]] = Field(default=None)
+    name: Optional[str] = Field(default=None)
+    tool_call_id: Optional[str] = Field(default=None)
+```
+
+#### Field Specifications
+
+##### role
+- **Type**: `Literal["system", "user", "assistant", "tool"]`
+- **Required**: Yes
+- **Description**: Role of the message sender
+- **Values**:
+  - `"system"`: System instructions or context
+  - `"user"`: User input messages
+  - `"assistant"`: Assistant responses
+  - `"tool"`: Tool/function execution results
+
+##### content
+- **Type**: `Optional[Union[str, list]]`
+- **Default**: `None`
+- **Description**: Message content (text or multimodal)
+- **Usage**: 
+  - `str`: Plain text content
+  - `list`: Multimodal content with text, images, etc.
+
+##### tool_calls
+- **Type**: `Optional[List[ToolCall]]`
+- **Default**: `None`
+- **Description**: List of tool calls made by assistant
+- **Usage**: Present when assistant requests tool executions
+
+##### name
+- **Type**: `Optional[str]`
+- **Default**: `None`
+- **Description**: Name of the tool (for tool role messages)
+
+##### tool_call_id
+- **Type**: `Optional[str]`
+- **Default**: `None`  
+- **Description**: ID linking tool result to original tool call
+
+### Memory
+
+Fixed-size sliding window memory buffer for conversation management.
+
+```python
+from typing import List
+from pydantic import BaseModel, Field
+
+class Memory(BaseModel):
+    messages: List[Message] = Field(default_factory=list)
+    max_messages: int = Field(default=50)
+```
+
+#### Field Specifications
+
+##### messages
+- **Type**: `List[Message]`
+- **Default**: `[]`
+- **Description**: List of conversation messages
+- **Usage**: Maintains chronological message history
+
+##### max_messages
+- **Type**: `int`
+- **Default**: `50`
+- **Description**: Maximum number of messages to retain
+- **Usage**: Controls memory buffer size
+
+## Message Methods
+
+### Arithmetic Operations
+
+Messages support addition operations for easy composition:
+
+```python
+from oxygent.schemas import Message
+
+# Message + Message = List[Message]
+msg1 = Message.user_message("Hello")
+msg2 = Message.assistant_message("Hi there!")
+conversation = msg1 + msg2  # Returns [msg1, msg2]
+
+# List + Message = List[Message]  
+messages = [msg1]
+extended = messages + msg2  # Returns [msg1, msg2]
+```
+
+### Conversion Methods
+
+#### to_dict() -> dict[str, Any]
+
+Converts message to OpenAI-compatible dictionary format.
+
+```python
+from oxygent.schemas import Message
+
+message = Message.assistant_message("Hello, how can I help you?")
+message_dict = message.to_dict()
+
+print(message_dict)
+# Output: {
+#     "role": "assistant",
+#     "content": "Hello, how can I help you?"
+# }
+```
+
+### Factory Constructors
+
+#### user_message(content: Union[str, list]) -> Message
+
+Creates a user message.
+
+```python
+from oxygent.schemas import Message
+
+# Text message
+user_msg = Message.user_message("What's the weather like?")
+
+# Multimodal message
+multimodal_msg = Message.user_message([
+    {"type": "text", "text": "Describe this image:"},
+    {"type": "image_url", "image_url": {"url": "https://example.com/image.jpg"}}
+])
+```
+
+#### system_message(content: str) -> Message
+
+Creates a system message.
+
+```python
+from oxygent.schemas import Message
+
+system_msg = Message.system_message(
+    "You are a helpful assistant that provides accurate weather information."
+)
+```
+
+#### assistant_message(content: Optional[str] = None) -> Message
+
+Creates an assistant message.
+
+```python
+from oxygent.schemas import Message
+
+# Text response
+assistant_msg = Message.assistant_message("The weather in NYC is 72°F and sunny.")
+
+# Empty response (for tool calls)
+empty_msg = Message.assistant_message()
+```
+
+#### tool_message(content: str, name: str, tool_call_id: str) -> Message
+
+Creates a tool result message.
+
+```python
+from oxygent.schemas import Message
+
+tool_result = Message.tool_message(
+    content="Current weather: 72°F, Sunny",
+    name="get_weather",
+    tool_call_id="call_123"
+)
+```
+
+### Batch Operations
+
+#### from_tool_calls(tool_calls: List[Any], content: Union[str, List[str]] = "", **kwargs) -> Message
+
+Creates assistant message with tool calls.
+
+```python
+from oxygent.schemas import Message, ToolCall, Function
+
+tool_calls = [
+    ToolCall(
+        id="call_123",
+        function=Function(
+            name="get_weather",
+            arguments='{"city": "New York"}'
+        )
+    )
+]
+
+assistant_with_tools = Message.from_tool_calls(
+    tool_calls=tool_calls,
+    content="I'll check the weather for you."
+)
+```
+
+#### dict_list_to_messages(dict_list: list[dict[str, Any]]) -> List[Message]
+
+Converts list of dictionaries to list of messages.
+
+```python
+from oxygent.schemas import Message
+
+message_dicts = [
+    {"role": "system", "content": "You are a helpful assistant."},
+    {"role": "user", "content": "Hello!"},
+    {"role": "assistant", "content": "Hi! How can I help you?"}
+]
+
+messages = Message.dict_list_to_messages(message_dicts)
+print(f"Converted {len(messages)} messages")
+```
+
+## Memory Methods
+
+### Message Management
+
+#### add_message(message: Message) -> None
+
+Adds a single message to memory.
+
+```python
+from oxygent.schemas import Memory, Message
+
+memory = Memory(max_messages=10)
+
+user_msg = Message.user_message("Hello!")
+memory.add_message(user_msg)
+
+print(f"Messages in memory: {len(memory.messages)}")
+```
+
+#### add_messages(messages: List[Message]) -> None
+
+Adds multiple messages to memory.
+
+```python
+from oxygent.schemas import Memory, Message
+
+memory = Memory()
+
+conversation = [
+    Message.system_message("You are a helpful assistant."),
+    Message.user_message("What's 2+2?"),
+    Message.assistant_message("2+2 equals 4.")
+]
+
+memory.add_messages(conversation)
+print(f"Total messages: {len(memory.messages)}")
+```
+
+#### clear() -> None
+
+Removes all messages from memory.
+
+```python
+memory = Memory()
+# ... add messages ...
+memory.clear()
+print(f"Messages after clear: {len(memory.messages)}")  # Output: 0
+```
+
+### Retrieval Methods
+
+#### get_recent_messages(n: int) -> List[Message]
+
+Gets the n most recent messages.
+
+```python
+from oxygent.schemas import Memory, Message
+
+memory = Memory()
+# ... add 10 messages ...
+
+# Get last 3 messages
+recent = memory.get_recent_messages(3)
+print(f"Recent messages: {len(recent)}")
+```
+
+#### to_dict_list(short_memory_size: int = None) -> List[dict]
+
+Converts messages to list of dictionaries with optional trimming.
+
+```python
+from oxygent.schemas import Memory, Message
+
+memory = Memory(max_messages=20)
+# ... add many messages ...
+
+# Get dictionary format for API
+dict_list = memory.to_dict_list(short_memory_size=5)
+print(f"Dictionary list length: {len(dict_list)}")
+```
+
+## Usage Examples
+
+### Basic Conversation Management
+
+```python
+from oxygent.schemas import Memory, Message
+
+# Initialize memory
+conversation_memory = Memory(max_messages=100)
+
+# System message
+system_msg = Message.system_message(
+    "You are a helpful AI assistant that provides accurate and concise answers."
+)
+conversation_memory.add_message(system_msg)
+
+# User interaction
+user_msg = Message.user_message("What's the capital of France?")
+conversation_memory.add_message(user_msg)
+
+assistant_msg = Message.assistant_message("The capital of France is Paris.")
+conversation_memory.add_message(assistant_msg)
+
+# Follow-up question
+user_followup = Message.user_message("What's its population?")
+conversation_memory.add_message(user_followup)
+
+assistant_followup = Message.assistant_message(
+    "Paris has a population of approximately 2.1 million people within the city proper, "
+    "and about 12.2 million in the metropolitan area."
+)
+conversation_memory.add_message(assistant_followup)
+
+print(f"Conversation has {len(conversation_memory.messages)} messages")
+
+# Convert to API format
+api_messages = conversation_memory.to_dict_list()
+for msg in api_messages:
+    print(f"{msg['role']}: {msg['content'][:50]}...")
+```
+
+### Tool Call Conversation Flow
+
+```python
+from oxygent.schemas import Memory, Message, ToolCall, Function
+
+# Initialize conversation memory
+memory = Memory()
+
+# System message
+memory.add_message(Message.system_message(
+    "You are a helpful assistant with access to weather information."
+))
+
+# User request
+memory.add_message(Message.user_message("What's the weather like in Tokyo?"))
+
+# Assistant makes tool call
+tool_call = ToolCall(
+    id="call_weather_123",
+    function=Function(
+        name="get_weather",
+        arguments='{"city": "Tokyo", "units": "celsius"}'
+    )
+)
+
+assistant_tool_msg = Message.from_tool_calls(
+    tool_calls=[tool_call],
+    content="I'll check the current weather in Tokyo for you."
+)
+memory.add_message(assistant_tool_msg)
+
+# Tool result
+tool_result = Message.tool_message(
+    content="Current weather in Tokyo: 23°C, Partly cloudy, Humidity: 65%",
+    name="get_weather",
+    tool_call_id="call_weather_123"
+)
+memory.add_message(tool_result)
+
+# Assistant final response
+final_response = Message.assistant_message(
+    "The current weather in Tokyo is 23°C and partly cloudy, with a humidity of 65%. "
+    "It's a pleasant day in the city!"
+)
+memory.add_message(final_response)
+
+# Display conversation flow
+print("Conversation Flow:")
+for i, msg in enumerate(memory.messages):
+    role = msg.role.upper()
+    if msg.tool_calls:
+        print(f"{i+1}. [{role}] Tool call: {msg.tool_calls[0].function.name}")
+    elif msg.tool_call_id:
+        print(f"{i+1}. [{role}] Tool result: {msg.content[:30]}...")
+    else:
+        content = msg.content[:50] + "..." if len(msg.content) > 50 else msg.content
+        print(f"{i+1}. [{role}] {content}")
+```
+
+### Multimodal Message Handling
+
+```python
+from oxygent.schemas import Message, Memory
+
+# Create multimodal user message
+multimodal_msg = Message.user_message([
+    {"type": "text", "text": "Can you describe what you see in this image?"},
+    {
+        "type": "image_url",
+        "image_url": {
+            "url": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD...",
+            "detail": "high"
+        }
+    }
+])
+
+# Create memory and add multimodal message
+memory = Memory()
+memory.add_message(multimodal_msg)
+
+# Assistant response to image
+assistant_response = Message.assistant_message(
+    "I can see a beautiful sunset over a mountain landscape. The sky has warm orange "
+    "and pink colors, with silhouetted mountains in the foreground."
+)
+memory.add_message(assistant_response)
+
+# Convert to dictionary format
+dict_messages = memory.to_dict_list()
+for msg_dict in dict_messages:
+    print(f"Role: {msg_dict['role']}")
+    if isinstance(msg_dict['content'], list):
+        print("  Multimodal content:")
+        for item in msg_dict['content']:
+            print(f"    - Type: {item['type']}")
+            if item['type'] == 'text':
+                print(f"      Text: {item['text'][:50]}...")
+            elif item['type'] == 'image_url':
+                print(f"      Image URL: {item['image_url']['url'][:30]}...")
+    else:
+        print(f"  Content: {msg_dict['content'][:50]}...")
+```
+
+### Memory Trimming and Management
+
+```python
+from oxygent.schemas import Memory, Message
+
+# Create memory with size limit
+limited_memory = Memory(max_messages=6)
+
+# Simulate long conversation
+messages = [
+    Message.system_message("You are a helpful assistant."),
+    Message.user_message("What's 1+1?"),
+    Message.assistant_message("1+1 equals 2."),
+    Message.user_message("What's 2+2?"),
+    Message.assistant_message("2+2 equals 4."),
+    Message.user_message("What's 3+3?"),
+    Message.assistant_message("3+3 equals 6."),
+    Message.user_message("What's 4+4?"),
+    Message.assistant_message("4+4 equals 8."),
+]
+
+for msg in messages:
+    limited_memory.add_message(msg)
+
+print(f"Total messages added: {len(messages)}")
+print(f"Messages in memory: {len(limited_memory.messages)}")
+
+# Use short memory for API calls
+short_memory = limited_memory.to_dict_list(short_memory_size=2)
+print(f"Short memory size: {len(short_memory)}")
+
+# Analyze memory content
+def analyze_memory(memory: Memory):
+    """Analyze memory composition."""
+    role_counts = {}
+    for msg in memory.messages:
+        role_counts[msg.role] = role_counts.get(msg.role, 0) + 1
+    
+    print("Memory Analysis:")
+    for role, count in role_counts.items():
+        print(f"  {role}: {count} messages")
+    
+    # Check for tool calls
+    tool_calls = sum(1 for msg in memory.messages if msg.tool_calls)
+    tool_results = sum(1 for msg in memory.messages if msg.tool_call_id)
+    
+    print(f"  Tool calls: {tool_calls}")
+    print(f"  Tool results: {tool_results}")
+
+analyze_memory(limited_memory)
+```
+
+### Conversation Context Management
+
+```python
+from oxygent.schemas import Memory, Message
+from typing import List, Dict, Any
+
+class ConversationManager:
+    """Advanced conversation management with context awareness."""
+    
+    def __init__(self, memory_size: int = 50):
+        self.memory = Memory(max_messages=memory_size)
+        self.context_stack: List[Dict[str, Any]] = []
+    
+    def start_conversation(self, system_prompt: str = None):
+        """Initialize conversation with system message."""
+        self.memory.clear()
+        if system_prompt:
+            self.memory.add_message(Message.system_message(system_prompt))
+    
+    def add_user_message(self, content: str):
+        """Add user message to conversation."""
+        self.memory.add_message(Message.user_message(content))
+    
+    def add_assistant_message(self, content: str):
+        """Add assistant response to conversation."""
+        self.memory.add_message(Message.assistant_message(content))
+    
+    def add_tool_interaction(self, tool_name: str, arguments: str, result: str):
+        """Add complete tool call interaction."""
+        # Assistant makes tool call
+        tool_call = ToolCall(
+            id=f"call_{tool_name}_{len(self.memory.messages)}",
+            function=Function(name=tool_name, arguments=arguments)
+        )
+        
+        assistant_msg = Message.from_tool_calls(tool_calls=[tool_call])
+        self.memory.add_message(assistant_msg)
+        
+        # Add tool result
+        tool_result = Message.tool_message(
+            content=result,
+            name=tool_name,
+            tool_call_id=tool_call.id
+        )
+        self.memory.add_message(tool_result)
+    
+    def get_conversation_summary(self) -> Dict[str, Any]:
+        """Get comprehensive conversation summary."""
+        messages = self.memory.messages
+        
+        summary = {
+            "total_messages": len(messages),
+            "message_types": {},
+            "tool_interactions": 0,
+            "conversation_turns": 0,
+            "recent_context": []
+        }
+        
+        # Analyze message types
+        for msg in messages:
+            role = msg.role
+            summary["message_types"][role] = summary["message_types"].get(role, 0) + 1
+            
+            if msg.tool_calls:
+                summary["tool_interactions"] += len(msg.tool_calls)
+        
+        # Count conversation turns (user/assistant pairs)
+        user_messages = summary["message_types"].get("user", 0)
+        assistant_messages = summary["message_types"].get("assistant", 0)
+        summary["conversation_turns"] = min(user_messages, assistant_messages)
+        
+        # Get recent context (last 3 messages)
+        recent_messages = self.memory.get_recent_messages(3)
+        for msg in recent_messages:
+            summary["recent_context"].append({
+                "role": msg.role,
+                "content_preview": str(msg.content)[:100] if msg.content else "[Tool call]",
+                "has_tools": bool(msg.tool_calls)
+            })
+        
+        return summary
+    
+    def export_for_api(self, include_system: bool = True) -> List[Dict[str, Any]]:
+        """Export conversation for API calls."""
+        messages = self.memory.to_dict_list()
+        
+        if not include_system:
+            # Filter out system messages
+            messages = [msg for msg in messages if msg["role"] != "system"]
+        
+        return messages
+
+# Usage example
+manager = ConversationManager(memory_size=30)
+
+# Start conversation
+manager.start_conversation(
+    "You are a helpful assistant with access to weather and calculation tools."
+)
+
+# Simulate conversation
+manager.add_user_message("What's the weather like in Paris?")
+
+manager.add_tool_interaction(
+    tool_name="get_weather",
+    arguments='{"city": "Paris", "units": "celsius"}',
+    result="Weather in Paris: 18°C, Light rain, Humidity: 78%"
+)
+
+manager.add_assistant_message(
+    "The current weather in Paris is 18°C with light rain and 78% humidity. "
+    "You might want to bring an umbrella if you're going out!"
+)
+
+manager.add_user_message("Can you calculate 15% tip on a 85 euro bill?")
+
+manager.add_tool_interaction(
+    tool_name="calculate",
+    arguments='{"expression": "85 * 0.15"}',
+    result="12.75"
+)
+
+manager.add_assistant_message(
+    "A 15% tip on an 85 euro bill would be 12.75 euros. "
+    "So the total would be 97.75 euros."
+)
+
+# Analyze conversation
+summary = manager.get_conversation_summary()
+print("Conversation Summary:")
+for key, value in summary.items():
+    print(f"  {key}: {value}")
+
+# Export for API
+api_messages = manager.export_for_api()
+print(f"\nAPI messages: {len(api_messages)} messages ready for API call")
+```
+
+## Advanced Patterns
+
+### Message Validation and Sanitization
+
+```python
+from oxygent.schemas import Message, ToolCall, Function
+from typing import List, Optional
+import json
+
+class MessageValidator:
+    """Validate and sanitize messages."""
+    
+    @staticmethod
+    def validate_tool_call_arguments(tool_call: ToolCall) -> bool:
+        """Validate that tool call arguments are valid JSON."""
+        try:
+            json.loads(tool_call.function.arguments)
+            return True
+        except json.JSONDecodeError:
+            return False
+    
+    @staticmethod
+    def sanitize_message_content(content: str, max_length: int = 1000) -> str:
+        """Sanitize and truncate message content."""
+        if not isinstance(content, str):
+            return ""
+        
+        # Basic sanitization
+        sanitized = content.strip()
+        
+        # Truncate if too long
+        if len(sanitized) > max_length:
+            sanitized = sanitized[:max_length] + "..."
+        
+        return sanitized
+    
+    @classmethod
+    def validate_message(cls, message: Message) -> tuple[bool, List[str]]:
+        """Validate message and return errors if any."""
+        errors = []
+        
+        # Check required fields
+        if not message.role:
+            errors.append("Message role is required")
+        
+        # Validate role-specific requirements
+        if message.role == "tool" and not message.tool_call_id:
+            errors.append("Tool messages must have tool_call_id")
+        
+        if message.role == "tool" and not message.name:
+            errors.append("Tool messages must have name")
+        
+        # Validate tool calls
+        if message.tool_calls:
+            for i, tool_call in enumerate(message.tool_calls):
+                if not cls.validate_tool_call_arguments(tool_call):
+                    errors.append(f"Tool call {i} has invalid arguments JSON")
+        
+        # Check content consistency
+        if message.role in ["user", "system"] and not message.content:
+            errors.append(f"{message.role} messages should have content")
+        
+        return len(errors) == 0, errors
+
+# Usage
+validator = MessageValidator()
+
+# Test valid message
+valid_msg = Message.user_message("Hello, world!")
+is_valid, errors = validator.validate_message(valid_msg)
+print(f"Valid message: {is_valid}, Errors: {errors}")
+
+# Test invalid message
+invalid_tool_msg = Message(role="tool", content="Result")  # Missing required fields
+is_valid, errors = validator.validate_message(invalid_tool_msg)
+print(f"Invalid message: {is_valid}, Errors: {errors}")
+```
+
+### Message Filtering and Search
+
+```python
+from oxygent.schemas import Memory, Message
+from typing import List, Callable, Optional
+import re
+
+class MessageFilter:
+    """Filter and search messages in memory."""
+    
+    @staticmethod
+    def filter_by_role(memory: Memory, role: str) -> List[Message]:
+        """Filter messages by role."""
+        return [msg for msg in memory.messages if msg.role == role]
+    
+    @staticmethod
+    def filter_by_content_pattern(memory: Memory, pattern: str) -> List[Message]:
+        """Filter messages by content pattern (regex)."""
+        compiled_pattern = re.compile(pattern, re.IGNORECASE)
+        filtered_messages = []
+        
+        for msg in memory.messages:
+            if msg.content and isinstance(msg.content, str):
+                if compiled_pattern.search(msg.content):
+                    filtered_messages.append(msg)
+        
+        return filtered_messages
+    
+    @staticmethod
+    def filter_with_tool_calls(memory: Memory) -> List[Message]:
+        """Filter messages that contain tool calls."""
+        return [msg for msg in memory.messages if msg.tool_calls]
+    
+    @staticmethod
+    def filter_tool_results(memory: Memory, tool_name: Optional[str] = None) -> List[Message]:
+        """Filter tool result messages, optionally by tool name."""
+        filtered = [msg for msg in memory.messages if msg.role == "tool"]
+        
+        if tool_name:
+            filtered = [msg for msg in filtered if msg.name == tool_name]
+        
+        return filtered
+    
+    @staticmethod
+    def search_conversation(memory: Memory, query: str) -> List[tuple[int, Message]]:
+        """Search conversation for messages containing query."""
+        results = []
+        
+        for i, msg in enumerate(memory.messages):
+            if msg.content and isinstance(msg.content, str):
+                if query.lower() in msg.content.lower():
+                    results.append((i, msg))
+        
+        return results
+
+# Usage example
+memory = Memory()
+# ... populate memory with messages ...
+
+filter_helper = MessageFilter()
+
+# Get all user messages
+user_messages = filter_helper.filter_by_role(memory, "user")
+print(f"User messages: {len(user_messages)}")
+
+# Find messages mentioning weather
+weather_messages = filter_helper.filter_by_content_pattern(memory, r"\bweather\b")
+print(f"Weather-related messages: {len(weather_messages)}")
+
+# Get messages with tool calls
+tool_call_messages = filter_helper.filter_with_tool_calls(memory)
+print(f"Messages with tool calls: {len(tool_call_messages)}")
+
+# Search for specific terms
+search_results = filter_helper.search_conversation(memory, "temperature")
+print(f"Messages mentioning temperature: {len(search_results)}")
+for index, message in search_results:
+    print(f"  Message {index}: {message.content[:50]}...")
+```
+
+### Memory Persistence
+
+```python
+import json
+from oxygent.schemas import Memory, Message
+from typing import Dict, Any
+from pathlib import Path
+
+class MemoryPersistence:
+    """Save and load conversation memory."""
+    
+    @staticmethod
+    def save_memory(memory: Memory, filepath: str) -> bool:
+        """Save memory to JSON file."""
+        try:
+            memory_data = {
+                "max_messages": memory.max_messages,
+                "messages": [msg.to_dict() for msg in memory.messages]
+            }
+            
+            with open(filepath, 'w', encoding='utf-8') as f:
+                json.dump(memory_data, f, indent=2, ensure_ascii=False)
+            
+            return True
+        except Exception as e:
+            print(f"Error saving memory: {e}")
+            return False
+    
+    @staticmethod
+    def load_memory(filepath: str) -> Optional[Memory]:
+        """Load memory from JSON file."""
+        try:
+            with open(filepath, 'r', encoding='utf-8') as f:
+                memory_data = json.load(f)
+            
+            # Create memory instance
+            memory = Memory(max_messages=memory_data.get("max_messages", 50))
+            
+            # Reconstruct messages
+            message_dicts = memory_data.get("messages", [])
+            messages = Message.dict_list_to_messages(message_dicts)
+            memory.add_messages(messages)
+            
+            return memory
+        except Exception as e:
+            print(f"Error loading memory: {e}")
+            return None
+    
+    @staticmethod
+    def backup_memory(memory: Memory, backup_dir: str = "memory_backups") -> str:
+        """Create timestamped backup of memory."""
+        from datetime import datetime
+        
+        # Create backup directory
+        Path(backup_dir).mkdir(exist_ok=True)
+        
+        # Generate timestamp filename
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        backup_file = f"{backup_dir}/memory_backup_{timestamp}.json"
+        
+        if MemoryPersistence.save_memory(memory, backup_file):
+            return backup_file
+        else:
+            return None
+
+# Usage
+persistence = MemoryPersistence()
+memory = Memory()
+
+# ... populate memory with conversation ...
+
+# Save memory
+if persistence.save_memory(memory, "conversation.json"):
+    print("Memory saved successfully")
+
+# Load memory
+loaded_memory = persistence.load_memory("conversation.json")
+if loaded_memory:
+    print(f"Loaded memory with {len(loaded_memory.messages)} messages")
+
+# Create backup
+backup_file = persistence.backup_memory(memory)
+if backup_file:
+    print(f"Memory backed up to: {backup_file}")
+```
+
+## Testing Memory Schema
+
+```python
+import pytest
+from oxygent.schemas import Message, Memory, ToolCall, Function
+
+class TestMemorySchema:
+    """Test cases for Memory schema components."""
+    
+    def test_message_creation_methods(self):
+        """Test message factory methods."""
+        # User message
+        user_msg = Message.user_message("Hello!")
+        assert user_msg.role == "user"
+        assert user_msg.content == "Hello!"
+        
+        # System message
+        system_msg = Message.system_message("You are helpful.")
+        assert system_msg.role == "system"
+        assert system_msg.content == "You are helpful."
+        
+        # Assistant message
+        assistant_msg = Message.assistant_message("Hi there!")
+        assert assistant_msg.role == "assistant"
+        assert assistant_msg.content == "Hi there!"
+        
+        # Tool message
+        tool_msg = Message.tool_message("Result", "tool_name", "call_123")
+        assert tool_msg.role == "tool"
+        assert tool_msg.content == "Result"
+        assert tool_msg.name == "tool_name"
+        assert tool_msg.tool_call_id == "call_123"
+    
+    def test_message_addition_operations(self):
+        """Test message addition operations."""
+        msg1 = Message.user_message("Hello")
+        msg2 = Message.assistant_message("Hi")
+        
+        # Message + Message
+        result = msg1 + msg2
+        assert isinstance(result, list)
+        assert len(result) == 2
+        assert result[0] == msg1
+        assert result[1] == msg2
+        
+        # List + Message
+        msg_list = [msg1]
+        result2 = msg_list + msg2
+        assert isinstance(result2, list)
+        assert len(result2) == 2
+        assert result2[1] == msg2
+    
+    def test_message_to_dict_conversion(self):
+        """Test message dictionary conversion."""
+        # Simple message
+        msg = Message.user_message("Test content")
+        msg_dict = msg.to_dict()
+        
+        expected = {
+            "role": "user",
+            "content": "Test content"
+        }
+        assert msg_dict == expected
+        
+        # Message with tool calls
+        tool_call = ToolCall(
+            id="call_123",
+            function=Function(name="test_tool", arguments='{"param": "value"}')
+        )
+        tool_msg = Message.from_tool_calls([tool_call])
+        tool_dict = tool_msg.to_dict()
+        
+        assert tool_dict["role"] == "assistant"
+        assert "tool_calls" in tool_dict
+        assert len(tool_dict["tool_calls"]) == 1
+    
+    def test_memory_operations(self):
+        """Test memory management operations."""
+        memory = Memory(max_messages=5)
+        
+        # Add single message
+        msg1 = Message.user_message("First message")
+        memory.add_message(msg1)
+        assert len(memory.messages) == 1
+        
+        # Add multiple messages
+        messages = [
+            Message.assistant_message("Response"),
+            Message.user_message("Second message")
+        ]
+        memory.add_messages(messages)
+        assert len(memory.messages) == 3
+        
+        # Test recent messages
+        recent = memory.get_recent_messages(2)
+        assert len(recent) == 2
+        assert recent[-1].content == "Second message"
+        
+        # Test clear
+        memory.clear()
+        assert len(memory.messages) == 0
+    
+    def test_memory_dict_conversion(self):
+        """Test memory dictionary conversion."""
+        memory = Memory()
+        
+        messages = [
+            Message.system_message("System"),
+            Message.user_message("User"),
+            Message.assistant_message("Assistant")
+        ]
+        memory.add_messages(messages)
+        
+        dict_list = memory.to_dict_list()
+        assert len(dict_list) == 3
+        assert all(isinstance(item, dict) for item in dict_list)
+        assert dict_list[0]["role"] == "system"
+        assert dict_list[1]["role"] == "user"
+        assert dict_list[2]["role"] == "assistant"
+    
+    def test_tool_call_workflow(self):
+        """Test complete tool call workflow."""
+        # Create tool call
+        tool_call = ToolCall(
+            id="call_weather_123",
+            function=Function(
+                name="get_weather",
+                arguments='{"city": "London"}'
+            )
+        )
+        
+        # Assistant message with tool call
+        assistant_msg = Message.from_tool_calls([tool_call])
+        assert assistant_msg.role == "assistant"
+        assert len(assistant_msg.tool_calls) == 1
+        assert assistant_msg.tool_calls[0].id == "call_weather_123"
+        
+        # Tool result message
+        result_msg = Message.tool_message(
+            content="London weather: 15°C, Cloudy",
+            name="get_weather",
+            tool_call_id="call_weather_123"
+        )
+        assert result_msg.role == "tool"
+        assert result_msg.tool_call_id == "call_weather_123"
+        assert result_msg.name == "get_weather"
+```
+
+## Best Practices
+
+### 1. Message Role Consistency
+
+Use appropriate message roles for different content types:
+
+```python
+from oxygent.schemas import Message
+
+# Good: Proper role usage
+system_msg = Message.system_message("Instructions for the assistant")
+user_msg = Message.user_message("User's question")
+assistant_msg = Message.assistant_message("Assistant's response")
+tool_msg = Message.tool_message("Tool result", "tool_name", "call_id")
+
+# Avoid: Mixing content types inappropriately
+# Don't put tool results in user messages
+```
+
+### 2. Memory Size Management
+
+Configure memory size based on use case:
+
+```python
+from oxygent.schemas import Memory
+
+# Short conversations
+chat_memory = Memory(max_messages=20)
+
+# Long conversations with history
+extended_memory = Memory(max_messages=100)
+
+# API-constrained environments
+api_memory = Memory(max_messages=10)
+```
+
+### 3. Tool Call ID Management
+
+Maintain consistent tool call ID linking:
+
+```python
+from oxygent.schemas import Message, ToolCall, Function
+
+# Generate consistent IDs
+tool_call_id = f"call_{tool_name}_{timestamp}"
+
+# Assistant makes tool call
+tool_call = ToolCall(id=tool_call_id, function=Function(...))
+assistant_msg = Message.from_tool_calls([tool_call])
+
+# Tool result references same ID
+tool_result = Message.tool_message(
+    content="Result",
+    name=tool_name,
+    tool_call_id=tool_call_id  # Same ID
+)
+```
+
+## Related Schemas
+
+- **[LLMResponse](./llm)**: LLM response handling with state management
+- **[OxyResponse](./oxy)**: Core framework response schema
+- **[Observation](./observation)**: Execution result tracking
+
+## See Also
+
+- [Schema Overview](./index)
+- [Chat Agent Implementation](../agents/chat-agent)
+- [LLM Integration Patterns](../llms/integration)

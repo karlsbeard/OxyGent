@@ -1,0 +1,539 @@
+---
+title: Environment Utils
+description: Environment variable management and system configuration utilities for the OxyGent framework
+---
+
+# Environment Utils
+
+The `env_utils` module provides comprehensive utilities for managing environment variables, system configuration, and deployment-specific settings in the OxyGent framework. It offers type-safe environment variable access, deployment stage detection, and system resource configuration.
+
+## Overview
+
+This module handles various aspects of environment management:
+
+- **Environment Variable Access**: Type-safe retrieval with default values
+- **Deployment Configuration**: Environment stage detection (production, development, local)
+- **System Information**: Network and hardware resource detection
+- **Legacy Support**: Compatibility with existing configuration patterns
+- **Resource Management**: CPU core and logging path configuration
+
+## Import Statement
+
+```python
+from oxygent.utils.env_utils import (
+    # Basic environment access
+    get_env, get_env_var,
+    
+    # System configuration
+    get_local_ip, get_env_for_cpu_count,
+    
+    # Deployment management
+    get_env_for_deployment_stage, is_prod_env,
+    
+    # Specialized getters
+    get_env_for_log_path, get_env_for_group_id
+)
+```
+
+## Core Functions
+
+### get_env(key: str, default_val=None) -> Optional[str]
+
+Basic environment variable getter with default value support.
+
+**Parameters:**
+- `key` (str): Environment variable name
+- `default_val` (Any, optional): Default value if environment variable is not set
+
+**Returns:**
+- `Optional[str]`: Environment variable value or default value
+
+**Example:**
+```python
+# Get environment variable with string default
+api_key = get_env("API_KEY", "development_key")
+
+# Get optional environment variable
+debug_mode = get_env("DEBUG_MODE")  # Returns None if not set
+
+# Get with different default types
+port = get_env("PORT", "8080")
+```
+
+### get_env_var(key: str, expected_type: Type = str, default_val=None) -> Union[str, List[str]]
+
+Type-safe environment variable getter with validation and automatic type conversion.
+
+**Parameters:**
+- `key` (str): Environment variable name
+- `expected_type` (Type, optional): Expected return type (`str` or `list`). Defaults to `str`
+- `default_val` (Any, optional): Default value if variable is not set
+
+**Returns:**
+- `Union[str, List[str]]`: Typed environment variable value
+
+**Raises:**
+- `ValueError`: If environment variable is not set without default, or type conversion fails
+
+**Supported Types:**
+- `str`: String values (default)
+- `list` or `List[str]`: Comma-separated values converted to string list
+
+**Examples:**
+
+#### String Variables
+```python
+# Basic string retrieval with validation
+database_url = get_env_var("DATABASE_URL", str, "sqlite:///default.db")
+
+# Required environment variable (raises if not set)
+secret_key = get_env_var("SECRET_KEY", str)
+```
+
+#### List Variables
+```python
+# Comma-separated list parsing
+allowed_hosts = get_env_var("ALLOWED_HOSTS", list, ["localhost", "127.0.0.1"])
+print(allowed_hosts)  # ["api.example.com", "www.example.com"]
+
+# Environment variable: ALLOWED_HOSTS="api.example.com,www.example.com"
+
+# List with validation
+api_endpoints = get_env_var("API_ENDPOINTS", List[str])
+```
+
+#### Error Handling
+```python
+try:
+    required_config = get_env_var("REQUIRED_CONFIG", str)
+except ValueError as e:
+    print(f"Configuration error: {e}")
+    # Handle missing required configuration
+```
+
+## System Information Functions
+
+### get_local_ip() -> str
+
+Retrieves the local machine's IP address.
+
+**Returns:**
+- `str`: Local IP address, defaults to "127.0.0.1" if detection fails
+
+**Example:**
+```python
+local_ip = get_local_ip()
+print(f"Server running on: {local_ip}")
+# Output: Server running on: 192.168.1.100
+```
+
+**Use Cases:**
+- Service registration and discovery
+- Network configuration validation
+- Load balancer configuration
+- Development server binding
+
+### get_env_for_cpu_count() -> int
+
+Gets the number of available CPU cores from environment configuration.
+
+**Environment Variable:** `AVAILABLE_CORES`
+**Default:** `2`
+
+**Returns:**
+- `int`: Number of available CPU cores
+
+**Example:**
+```python
+cpu_cores = get_env_for_cpu_count()
+print(f"Using {cpu_cores} CPU cores")
+
+# Configure worker processes
+import multiprocessing
+worker_count = min(cpu_cores, multiprocessing.cpu_count())
+```
+
+## Deployment Configuration
+
+### get_env_for_deployment_stage() -> int
+
+Determines the deployment environment stage as an integer code.
+
+**Environment Variable:** `DEPLOYMENT_STAGE`
+**Default:** `"local"`
+
+**Returns:**
+- `int`: Deployment stage code
+  - `1`: Production (`"prod"`)
+  - `2`: Development (`"dev"`)
+  - `3`: Local/Debug (any other value including `"local"`)
+
+**Example:**
+```python
+stage = get_env_for_deployment_stage()
+
+if stage == 1:
+    print("Running in production")
+    # Enable production optimizations
+elif stage == 2:
+    print("Running in development")
+    # Enable development features
+else:
+    print("Running locally")
+    # Enable debug features
+```
+
+### is_prod_env() -> bool
+
+Simplified production environment detection.
+
+**Environment Variable:** `DEPLOYMENT_STAGE`
+
+**Returns:**
+- `bool`: `True` if running in production environment
+
+**Example:**
+```python
+if is_prod_env():
+    # Production configuration
+    log_level = "WARNING"
+    debug = False
+else:
+    # Development/local configuration
+    log_level = "DEBUG"
+    debug = True
+
+# Conditional feature enabling
+enable_analytics = is_prod_env()
+enable_debug_toolbar = not is_prod_env()
+```
+
+## Specialized Configuration Functions
+
+### get_env_for_log_path() -> str
+
+Gets the logging directory path from environment configuration.
+
+**Environment Variable:** `LOG_PATH`
+**Default:** `"/export/Logs"`
+
+**Returns:**
+- `str`: Directory path for log files
+
+**Example:**
+```python
+import os
+import logging
+
+log_path = get_env_for_log_path()
+os.makedirs(log_path, exist_ok=True)
+
+# Configure logging
+logging.basicConfig(
+    filename=os.path.join(log_path, "application.log"),
+    level=logging.INFO
+)
+```
+
+### get_env_for_group_id() -> int
+
+Gets the machine group identifier for clustered deployments.
+
+**Environment Variable:** `GROUP_ID`
+**Default:** `"0"`
+
+**Returns:**
+- `int`: Group identifier for the machine
+
+**Example:**
+```python
+group_id = get_env_for_group_id()
+print(f"Machine belongs to group: {group_id}")
+
+# Use in service discovery or load balancing
+service_name = f"worker-group-{group_id}"
+```
+
+## Legacy Configuration Support
+
+The module includes several legacy configuration functions for backward compatibility:
+
+### get_env_for_run_attr() -> int
+
+Gets HTTP service runtime attributes.
+
+**Environment Variable:** `RUN_ATTR`
+**Default:** `-1`
+
+**Returns:**
+- `int`: Runtime attribute value, `-1` on error
+
+### get_env_for_run_profile() -> str
+
+Gets the application runtime profile.
+
+**Environment Variable:** `YACHAIN_RUN_PROFILE`
+**Default:** `"local"`
+
+**Returns:**
+- `str`: Runtime profile name
+
+### get_schedule_profile() -> str
+
+Gets the task scheduling profile setting.
+
+**Environment Variable:** `SCHEDULE_JOB`
+**Default:** `"false"`
+
+**Returns:**
+- `str`: Scheduling profile value
+
+### get_engine_intelligent_profile() -> str
+
+Gets the engine intelligence profile for task scheduling.
+
+**Environment Variable:** `ENGINE`
+**Default:** `"yachain_group"`
+
+**Returns:**
+- `str`: Engine profile identifier
+
+## Advanced Usage Patterns
+
+### Configuration Management Class
+
+```python
+from oxygent.utils.env_utils import *
+
+class AppConfig:
+    """Centralized application configuration management."""
+    
+    def __init__(self):
+        self.database_url = get_env_var("DATABASE_URL", str)
+        self.allowed_hosts = get_env_var("ALLOWED_HOSTS", list, ["localhost"])
+        self.debug = not is_prod_env()
+        self.cpu_cores = get_env_for_cpu_count()
+        self.log_path = get_env_for_log_path()
+        
+    def validate(self):
+        """Validate all configuration values."""
+        required_vars = {
+            'DATABASE_URL': self.database_url,
+            'ALLOWED_HOSTS': self.allowed_hosts
+        }
+        
+        for var_name, value in required_vars.items():
+            if not value:
+                raise ValueError(f"Required configuration {var_name} is missing")
+    
+    def get_worker_count(self):
+        """Calculate optimal worker count based on CPU cores."""
+        return min(self.cpu_cores, 8)  # Cap at 8 workers
+
+# Usage
+config = AppConfig()
+config.validate()
+```
+
+### Environment-Specific Service Configuration
+
+```python
+def configure_service():
+    """Configure service based on deployment environment."""
+    
+    deployment_stage = get_env_for_deployment_stage()
+    local_ip = get_local_ip()
+    
+    config = {
+        'host': local_ip,
+        'workers': get_env_for_cpu_count(),
+        'group_id': get_env_for_group_id()
+    }
+    
+    if deployment_stage == 1:  # Production
+        config.update({
+            'port': get_env_var("PORT", str, "80"),
+            'log_level': "WARNING",
+            'reload': False
+        })
+    elif deployment_stage == 2:  # Development
+        config.update({
+            'port': get_env_var("PORT", str, "8000"),
+            'log_level': "INFO",
+            'reload': True
+        })
+    else:  # Local
+        config.update({
+            'port': get_env_var("PORT", str, "3000"),
+            'log_level': "DEBUG",
+            'reload': True
+        })
+    
+    return config
+
+service_config = configure_service()
+```
+
+### Multi-Environment Variable Processing
+
+```python
+def load_multi_env_config(env_mapping):
+    """Load multiple environment variables with type conversion."""
+    config = {}
+    
+    for key, (env_var, var_type, default) in env_mapping.items():
+        try:
+            config[key] = get_env_var(env_var, var_type, default)
+        except ValueError as e:
+            print(f"Configuration error for {key}: {e}")
+            config[key] = default
+    
+    return config
+
+# Configuration mapping
+env_mapping = {
+    'api_keys': ('API_KEYS', list, []),
+    'timeout': ('REQUEST_TIMEOUT', str, '30'),
+    'redis_url': ('REDIS_URL', str, 'redis://localhost:6379'),
+    'workers': ('WORKER_COUNT', str, str(get_env_for_cpu_count()))
+}
+
+app_config = load_multi_env_config(env_mapping)
+```
+
+## Error Handling Best Practices
+
+### Graceful Configuration Loading
+
+```python
+def safe_get_config(env_var, config_type=str, default=None, required=False):
+    """Safely get configuration with comprehensive error handling."""
+    try:
+        if required and not get_env(env_var) and default is None:
+            raise ValueError(f"Required environment variable {env_var} is not set")
+        
+        return get_env_var(env_var, config_type, default)
+    
+    except ValueError as e:
+        if required:
+            print(f"Critical configuration error: {e}")
+            raise
+        else:
+            print(f"Configuration warning: {e}, using default: {default}")
+            return default
+
+# Usage examples
+database_url = safe_get_config("DATABASE_URL", str, required=True)
+api_keys = safe_get_config("API_KEYS", list, [], required=False)
+```
+
+### Configuration Validation
+
+```python
+def validate_environment():
+    """Validate critical environment variables on startup."""
+    validations = []
+    
+    # Check deployment stage
+    stage = get_env_for_deployment_stage()
+    if stage not in [1, 2, 3]:
+        validations.append("Invalid deployment stage")
+    
+    # Check resource configuration
+    cpu_cores = get_env_for_cpu_count()
+    if cpu_cores < 1:
+        validations.append("Invalid CPU core configuration")
+    
+    # Check network configuration
+    local_ip = get_local_ip()
+    if local_ip == "127.0.0.1" and is_prod_env():
+        validations.append("Warning: Using localhost in production")
+    
+    return validations
+
+# Validate on application start
+startup_warnings = validate_environment()
+for warning in startup_warnings:
+    print(f"Configuration warning: {warning}")
+```
+
+## Integration Examples
+
+### Flask Application Configuration
+
+```python
+from flask import Flask
+from oxygent.utils.env_utils import *
+
+def create_app():
+    app = Flask(__name__)
+    
+    # Configure based on environment
+    if is_prod_env():
+        app.config['DEBUG'] = False
+        app.config['TESTING'] = False
+    else:
+        app.config['DEBUG'] = True
+        app.config['TESTING'] = True
+    
+    # Set host and port
+    app.config['HOST'] = get_local_ip()
+    app.config['PORT'] = int(get_env('PORT', '5000'))
+    
+    return app
+
+app = create_app()
+```
+
+### Docker Environment Integration
+
+```python
+def setup_docker_environment():
+    """Configure application for Docker deployment."""
+    
+    # Docker-specific environment variables
+    container_config = {
+        'hostname': get_env('HOSTNAME', 'unknown'),
+        'pod_ip': get_local_ip(),
+        'cpu_limit': get_env_for_cpu_count(),
+        'log_path': get_env_for_log_path(),
+        'deployment_stage': get_env_for_deployment_stage()
+    }
+    
+    # Validate Docker environment
+    if container_config['hostname'] == 'unknown':
+        print("Warning: Running outside Docker container")
+    
+    return container_config
+
+docker_config = setup_docker_environment()
+```
+
+## Environment Variable Reference
+
+| Environment Variable | Function | Default | Type | Description |
+|---------------------|----------|---------|------|-------------|
+| `AVAILABLE_CORES` | `get_env_for_cpu_count()` | `2` | int | Available CPU cores |
+| `LOG_PATH` | `get_env_for_log_path()` | `"/export/Logs"` | str | Log file directory |
+| `DEPLOYMENT_STAGE` | `get_env_for_deployment_stage()` | `"local"` | str→int | Environment stage |
+| `GROUP_ID` | `get_env_for_group_id()` | `"0"` | str→int | Machine group ID |
+| `RUN_ATTR` | `get_env_for_run_attr()` | `-1` | int | Runtime attributes |
+| `YACHAIN_RUN_PROFILE` | `get_env_for_run_profile()` | `"local"` | str | Runtime profile |
+| `SCHEDULE_JOB` | `get_schedule_profile()` | `"false"` | str | Scheduling enabled |
+| `ENGINE` | `get_engine_intelligent_profile()` | `"yachain_group"` | str | Engine profile |
+
+## Best Practices
+
+1. **Use Type-Safe Functions**: Prefer `get_env_var()` over `get_env()` for production code
+2. **Provide Sensible Defaults**: Always provide appropriate default values
+3. **Validate Critical Variables**: Check required environment variables at startup
+4. **Environment Detection**: Use `is_prod_env()` for environment-specific behavior
+5. **Error Handling**: Implement proper error handling for missing required variables
+6. **Documentation**: Document all environment variables and their expected values
+
+## Security Considerations
+
+- **Sensitive Data**: Never log environment variables containing secrets
+- **Default Values**: Avoid hardcoding sensitive defaults
+- **Validation**: Validate environment variables to prevent injection attacks
+- **Access Control**: Limit access to environment configuration functions

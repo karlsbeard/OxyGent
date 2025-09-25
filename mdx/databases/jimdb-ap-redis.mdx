@@ -1,0 +1,1164 @@
+---
+title: JimdbApRedis
+description: Production-ready Redis client specifically designed for JimDB with automatic retry logic, connection management, and enhanced list operations
+---
+
+# JimdbApRedis
+
+The `JimdbApRedis` class provides a production-ready Redis client specifically tailored for JimDB (JD's internal database system). It features robust connection management, automatic retry logic for transient failures, and enhanced list operations with built-in size limits and expiration handling.
+
+## Overview
+
+`JimdbApRedis` is designed for production environments where you need reliable Redis operations with JimDB-specific optimizations. It provides:
+
+- **JimDB Integration**: Specifically designed for JD's JimDB service
+- **Automatic Retry Logic**: Built-in retry mechanism for connection errors
+- **Enhanced List Operations**: Advanced lpush with size limits and automatic trimming
+- **Connection Management**: Robust connection pooling with health checks
+- **Pipeline Support**: Atomic operations using Redis pipelines
+- **Comprehensive Error Handling**: Detailed logging and graceful error recovery
+
+## Class Definition
+
+```python
+from oxygent.databases.db_redis.jimdb_ap_redis import JimdbApRedis
+
+# Initialize with JimDB connection parameters
+redis = JimdbApRedis(
+    host="jimdb.example.com",
+    port=6379,
+    password="secure_password",
+    db=0
+)
+```
+
+## Constructor
+
+### __init__(host, port, password, db=0)
+
+Initializes the JimDB Redis client with connection parameters and configuration.
+
+**Parameters**:
+- `host` (str): Redis server hostname or IP address
+- `port` (int): Redis server port number
+- `password` (str): Authentication password for Redis server
+- `db` (int, optional): Database number to select (default: 0)
+
+**Configuration**:
+- Loads default settings from OxyGent Config system
+- Sets up connection pool with health checks
+- Initializes retry and error handling mechanisms
+
+**Attributes**:
+- `default_expire_time`: Default TTL from Config (1 day)
+- `default_list_max_size`: Maximum list size from Config
+- `default_list_max_length`: Maximum string length from Config (20MB)
+
+```python
+# Basic initialization
+redis = JimdbApRedis(
+    host="localhost", 
+    port=6379, 
+    password="mypassword"
+)
+
+# Production initialization with custom database
+redis = JimdbApRedis(
+    host="prod-jimdb.company.com",
+    port=6379,
+    password="prod_password",
+    db=2  # Use database 2
+)
+```
+
+## Connection Management
+
+### _get_redis_connection()
+
+Creates and configures a Redis connection pool optimized for JimDB.
+
+**Returns**: Redis connection pool with JimDB-specific settings
+
+**Configuration**:
+- **URL Format**: `redis://host:port/db`
+- **Connection Pooling**: Maximum 5 connections per pool
+- **Health Checks**: Every 30 seconds
+- **Response Decoding**: Disabled for binary data support
+
+```python
+# Internal connection configuration:
+Redis.from_url(
+    f"redis://{self.host}:{self.port}/{self.db}",
+    password=self.password,
+    max_connections=5,
+    health_check_interval=30
+)
+```
+
+### async close()
+
+Properly closes the Redis connection pool and cleans up resources.
+
+**Behavior**:
+- Closes all active connections in the pool
+- Disconnects the connection pool
+- Prevents resource leaks
+- Safe to call multiple times
+
+```python
+try:
+    # Perform Redis operations
+    await redis.set("key", "value")
+    result = await redis.get("key")
+finally:
+    # Always clean up connections
+    await redis.close()
+```
+
+## Retry Mechanism
+
+### @retry_decorator
+
+Automatic retry decorator that handles connection failures and errors.
+
+**Functionality**:
+- **Connection Error Recovery**: Automatically reconnects on connection failures
+- **Single Retry**: Attempts operation once after reconnection
+- **Error Logging**: Detailed logging with stack traces
+- **Graceful Failure**: Returns None for non-recoverable errors
+
+**Handled Exceptions**:
+- `ConnectionError`: Network connectivity issues
+- `ConnectionResetError`: Connection reset by peer
+- `TimeoutError`: Operation timeout
+
+```python
+# Applied automatically to most methods:
+@retry_decorator
+async def get(self, key):
+    return await self.redis_pool.get(key)
+
+# Retry logic flow:
+# 1. Try operation
+# 2. If connection error occurs:
+#    - Log the error
+#    - Close current connection  
+#    - Create new connection
+#    - Retry operation once
+# 3. If other error occurs:
+#    - Log error and return None
+```
+
+## Core Methods
+
+### async set(key, value, ex=86400)
+
+Sets a key-value pair with expiration time.
+
+**Parameters**:
+- `key` (str): The key to set
+- `value` (str): The value to store
+- `ex` (int, optional): Expiration time in seconds (default: 86400 = 24 hours)
+
+**Returns**: Redis SET operation result (typically `True` or `OK`)
+
+**Features**:
+- Automatic retry on connection failures
+- Default 24-hour expiration
+- Full Redis SET command support
+
+```python
+# Basic key-value setting
+await redis.set("user:123", "john_doe")
+
+# With custom expiration
+await redis.set("session:abc", "active", ex=3600)  # 1 hour
+
+# With no expiration (Redis default behavior)
+await redis.set("permanent_key", "permanent_value", ex=None)
+```
+
+### async get(key)
+
+Gets the value associated with a key.
+
+**Parameters**:
+- `key` (str): The key to retrieve
+
+**Returns**: The value as bytes, or None if key doesn't exist
+
+**Features**:
+- Automatic retry on connection failures
+- Returns binary data (no automatic decoding)
+- Handles expired keys automatically
+
+```python
+# Basic get operation
+value = await redis.get("user:123")
+if value is not None:
+    # Decode bytes to string if needed
+    user_id = value.decode('utf-8')
+    print(f"User ID: {user_id}")
+
+# Handle missing keys
+session = await redis.get("session:missing")
+if session is None:
+    print("Session not found or expired")
+```
+
+### async exists(key)
+
+Checks if a key exists in the database.
+
+**Parameters**:
+- `key` (str): The key to check
+
+**Returns**: Integer (1 if key exists, 0 if not)
+
+**Features**:
+- Efficient existence check
+- Automatic retry on connection failures
+- Handles expired keys correctly
+
+```python
+# Check key existence
+if await redis.exists("user:123"):
+    user_data = await redis.get("user:123")
+    print("User found")
+else:
+    print("User does not exist")
+
+# Conditional operations based on existence
+key_exists = await redis.exists("config:feature_flag")
+if key_exists:
+    await redis.delete("config:feature_flag")
+```
+
+### async mset(items, ex=None)
+
+Sets multiple key-value pairs in a single operation.
+
+**Parameters**:
+- `items` (dict): Dictionary containing key-value pairs to set
+- `ex` (int, optional): Expiration time in seconds for all keys
+
+**Returns**: Redis MSET operation result
+
+**Features**:
+- Batch operation for better performance
+- Optional expiration for all keys
+- Automatic retry on connection failures
+
+```python
+# Bulk set operation
+user_data = {
+    "user:123:name": "John Doe",
+    "user:123:email": "john@example.com",
+    "user:123:status": "active"
+}
+await redis.mset(user_data)
+
+# With expiration for all keys
+session_data = {
+    "session:abc:user": "123", 
+    "session:abc:ip": "192.168.1.1",
+    "session:abc:started": "2024-09-01T10:00:00Z"
+}
+await redis.mset(session_data, ex=1800)  # 30 minutes
+```
+
+### async mget(keys)
+
+Gets multiple values for the given keys in a single operation.
+
+**Parameters**:
+- `keys` (list): List of keys to retrieve
+
+**Returns**: List of values (bytes) corresponding to keys, None for missing keys
+
+**Features**:
+- Batch operation for better performance
+- Maintains key order in response
+- Automatic retry on connection failures
+
+```python
+# Bulk get operation
+keys = ["user:123:name", "user:123:email", "user:123:status"]
+values = await redis.mget(keys)
+
+# Process results (handles None for missing keys)
+for key, value in zip(keys, values):
+    if value is not None:
+        print(f"{key}: {value.decode('utf-8')}")
+    else:
+        print(f"{key}: Not found")
+```
+
+### async delete(key)
+
+Deletes a key from the database.
+
+**Parameters**:
+- `key` (str): The key to delete
+
+**Returns**: Number of keys deleted (0 or 1)
+
+**Features**:
+- Automatic retry on connection failures
+- Returns count of actually deleted keys
+
+```python
+# Delete single key
+deleted = await redis.delete("temp_data")
+print(f"Deleted {deleted} keys")
+
+# Conditional deletion
+if await redis.exists("old_session"):
+    await redis.delete("old_session")
+    print("Old session cleaned up")
+```
+
+### async expire(key, ex)
+
+Sets an expiration time for a key.
+
+**Parameters**:
+- `key` (str): The key to set expiration for
+- `ex` (int): Expiration time in seconds
+
+**Returns**: Boolean indicating if expiration was set
+
+**Features**:
+- Works with any key type
+- Automatic retry on connection failures
+- Validates expiration parameter
+
+```python
+# Set expiration on existing key
+await redis.set("data", "value")  # No expiration initially
+await redis.expire("data", 3600)  # Expire in 1 hour
+
+# Conditional expiration setting
+if ex is not None and ex > 0:
+    await redis.expire("dynamic_key", ex)
+```
+
+## Enhanced List Operations
+
+### async lpush(key, *values, ex=None, max_size=None, max_length=None)
+
+Advanced list push operation with size management and automatic trimming.
+
+**Parameters**:
+- `key` (str): The list key
+- `*values` (Union[bytes, int, str, float, dict]): Values to push
+- `ex` (int, optional): Expiration time in seconds (default: 1 day)
+- `max_size` (int, optional): Maximum number of elements to keep (default: 10)
+- `max_length` (int, optional): Maximum length for string values (default: 20MB)
+
+**Returns**: The length of the list after the push operation
+
+**Features**:
+- **Atomic Operations**: Uses Redis pipeline for atomicity
+- **Automatic Trimming**: Maintains list size limits
+- **Value Processing**: Handles multiple data types
+- **Length Limiting**: Truncates long strings/JSON
+- **Expiration Management**: Sets TTL on the list
+
+**Value Processing**:
+- **str/bytes**: Truncated to max_length
+- **int/float**: Added as-is
+- **dict**: Converted to JSON and truncated
+- **Other types**: Raises ValueError
+
+```python
+# Basic list operations
+length = await redis.lpush("notifications", "New message")
+print(f"List length: {length}")
+
+# Multiple values with type mixing
+await redis.lpush("activity_log",
+    "User login",           # string
+    {"user_id": 123},      # dict -> JSON
+    42,                    # integer
+    3.14                   # float
+)
+
+# With custom limits and expiration
+await redis.lpush("limited_queue",
+    "item1", "item2", "item3",
+    ex=7200,        # 2 hours expiration
+    max_size=100,   # Keep only 100 items
+    max_length=1024 # Truncate strings at 1KB
+)
+
+# Large data handling
+large_data = {"data": "x" * 50000, "meta": "important"}
+await redis.lpush("large_items", 
+    large_data,
+    max_length=10000  # JSON will be truncated to 10KB
+)
+```
+
+**Pipeline Operations** (executed atomically):
+```python
+# Internal pipeline execution:
+async with self.redis_pool.pipeline(transaction=False) as pipe:
+    pipe.lpush(key, *processed_values)     # Add values
+    pipe.ltrim(key, 0, max_size - 1)       # Trim to size limit  
+    pipe.expire(key, ex)                   # Set expiration
+    results = await pipe.execute()         # Execute atomically
+    return results[0]                      # Return list length
+```
+
+### async rpop(key)
+
+Removes and returns the last element of a list.
+
+**Parameters**:
+- `key` (str): The list key
+
+**Returns**: The removed element as bytes, or None if list is empty
+
+**Features**:
+- Standard Redis RPOP behavior
+- No automatic retry (may be intentionally omitted)
+- Works with lpush for LIFO queue pattern
+
+```python
+# Basic pop operation
+item = await redis.rpop("task_queue")
+if item is not None:
+    task_data = item.decode('utf-8')
+    print(f"Processing task: {task_data}")
+```
+
+### async brpop(key, timeout=1)
+
+Simulated blocking pop operation for JimDB compatibility.
+
+**Parameters**:
+- `key` (str): The list key to pop from
+- `timeout` (int): Maximum time to wait in seconds (default: 1)
+
+**Returns**: The removed element as bytes, or None if timeout reached
+
+**JimDB Limitation**: Since JimDB doesn't support true blocking operations, this method simulates blocking behavior using rpop with sleep fallback.
+
+**Simulation Logic**:
+1. Attempt rpop immediately
+2. If successful, return the value
+3. If list is empty, sleep for timeout duration
+4. Attempt rpop again after sleep
+
+```python
+# Simulated blocking pop (not truly blocking)
+item = await redis.brpop("worker_queue", timeout=5)
+if item is not None:
+    print(f"Got work item: {item.decode('utf-8')}")
+else:
+    print("No work available after 5 second timeout")
+
+# Worker pattern with brpop
+while True:
+    task = await redis.brpop("tasks", timeout=30)
+    if task:
+        await process_task(task.decode('utf-8'))
+    else:
+        print("No tasks, continuing to wait...")
+```
+
+### async lrange(key, start=0, end=-1)
+
+Gets a range of elements from a list.
+
+**Parameters**:
+- `key` (str): The list key
+- `start` (int): Start index (default: 0)
+- `end` (int): End index, -1 means last element (default: -1)
+
+**Returns**: List of elements as bytes, empty list if key doesn't exist
+
+**Features**:
+- Standard Redis LRANGE behavior
+- Supports negative indices
+- Automatic retry on connection failures
+- Returns LIFO-ordered elements (most recent first due to lpush)
+
+```python
+# Get all elements
+all_items = await redis.lrange("notifications")
+
+# Get first 10 elements (most recent due to lpush)
+recent = await redis.lrange("notifications", 0, 9)
+
+# Get last 5 elements
+oldest = await redis.lrange("notifications", -5, -1)
+
+# Decode and process results
+decoded_items = [item.decode('utf-8') for item in recent if item]
+for item in decoded_items:
+    print(f"Notification: {item}")
+```
+
+### async llen(key)
+
+Gets the length of a list.
+
+**Parameters**:
+- `key` (str): The list key
+
+**Returns**: Number of elements in the list (0 if key doesn't exist)
+
+**Features**:
+- Efficient O(1) operation
+- Automatic retry on connection failures
+
+```python
+# Check queue size
+queue_size = await redis.llen("processing_queue")
+print(f"Queue has {queue_size} items")
+
+# Conditional processing based on size
+if queue_size > 1000:
+    print("Queue is getting full, consider scaling workers")
+elif queue_size == 0:
+    print("Queue is empty, workers can rest")
+```
+
+### async ltrim(key, start, end)
+
+Trims a list to keep only elements within the specified range.
+
+**Parameters**:
+- `key` (str): The list key
+- `start` (int): Start index to keep
+- `end` (int): End index to keep
+
+**Returns**: Boolean indicating operation success
+
+**Features**:
+- Automatic retry on connection failures
+- Used internally by lpush for size management
+
+```python
+# Manual list trimming
+await redis.ltrim("activity_log", 0, 99)  # Keep only first 100 items
+
+# Keep only recent items
+await redis.ltrim("recent_events", -50, -1)  # Keep last 50 items
+```
+
+## Additional List Methods
+
+### async lrem(key, count, value)
+
+Removes elements from a list by value.
+
+**Parameters**:
+- `key` (str): The list key
+- `count` (int): Number of elements to remove (direction depends on sign)
+- `value` (str): The value to remove
+
+**Returns**: Number of elements removed
+
+```python
+# Remove specific values from list
+removed = await redis.lrem("user_sessions", 1, "expired_session")
+print(f"Removed {removed} expired sessions")
+```
+
+### async lindex(key, index)
+
+Gets an element from a list by its index.
+
+**Parameters**:
+- `key` (str): The list key
+- `index` (int): The index of the element to retrieve
+
+**Returns**: Element at the specified index, or None if index is out of range
+
+```python
+# Get specific list element
+first_item = await redis.lindex("queue", 0)
+last_item = await redis.lindex("queue", -1)
+```
+
+## Usage Examples
+
+### Production Task Queue System
+
+```python
+class ProductionTaskQueue:
+    def __init__(self, jimdb_config: dict):
+        self.redis = JimdbApRedis(
+            host=jimdb_config["host"],
+            port=jimdb_config["port"],
+            password=jimdb_config["password"],
+            db=jimdb_config.get("db", 0)
+        )
+        self.queue_name = "prod_tasks"
+    
+    async def enqueue_task(self, task_data: dict, priority: str = "normal"):
+        """Enqueue a task with priority and metadata."""
+        task = {
+            "id": str(uuid.uuid4()),
+            "data": task_data,
+            "priority": priority,
+            "enqueued_at": time.time(),
+            "attempts": 0
+        }
+        
+        queue_key = f"{self.queue_name}:{priority}"
+        
+        # Use enhanced lpush with size limits
+        await self.redis.lpush(
+            queue_key,
+            task,
+            ex=86400,      # Tasks expire after 24 hours
+            max_size=10000, # Keep max 10,000 tasks per priority
+            max_length=1024*50  # 50KB max task size
+        )
+        
+        return task["id"]
+    
+    async def dequeue_task(self, priority_order: list = ["high", "normal", "low"]):
+        """Dequeue next available task respecting priority."""
+        for priority in priority_order:
+            queue_key = f"{self.queue_name}:{priority}"
+            
+            # Use simulated blocking pop with short timeout
+            task_data = await self.redis.brpop(queue_key, timeout=1)
+            
+            if task_data:
+                try:
+                    import json
+                    task = json.loads(task_data.decode('utf-8'))
+                    return task
+                except json.JSONDecodeError:
+                    logger.error(f"Failed to decode task: {task_data}")
+                    continue
+        
+        return None
+    
+    async def get_queue_statistics(self):
+        """Get comprehensive queue statistics."""
+        stats = {}
+        priorities = ["high", "normal", "low"]
+        
+        # Use mget for efficient bulk retrieval of queue lengths
+        queue_keys = [f"{self.queue_name}:{p}" for p in priorities]
+        lengths = await asyncio.gather(*[
+            self.redis.llen(key) for key in queue_keys
+        ])
+        
+        for priority, length in zip(priorities, lengths):
+            stats[priority] = {
+                "count": length,
+                "queue_key": f"{self.queue_name}:{priority}"
+            }
+        
+        stats["total"] = sum(stat["count"] for stat in stats.values())
+        return stats
+    
+    async def cleanup_expired_tasks(self):
+        """Manual cleanup for debugging (TTL handles this automatically)."""
+        priorities = ["high", "normal", "low"]
+        cleaned = 0
+        
+        for priority in priorities:
+            queue_key = f"{self.queue_name}:{priority}"
+            
+            # Check if queue exists
+            if await self.redis.exists(queue_key):
+                # Get remaining TTL
+                ttl = await self.redis.redis_pool.ttl(queue_key)
+                if ttl == -1:  # No expiration set
+                    await self.redis.expire(queue_key, 86400)
+                    cleaned += 1
+        
+        return cleaned
+
+# Usage
+task_queue = ProductionTaskQueue({
+    "host": "jimdb.prod.company.com",
+    "port": 6379,
+    "password": "secure_prod_password",
+    "db": 1
+})
+
+# Enqueue tasks
+task_id = await task_queue.enqueue_task({
+    "type": "send_email",
+    "recipient": "user@example.com",
+    "template": "welcome"
+}, priority="high")
+
+# Worker process
+while True:
+    task = await task_queue.dequeue_task()
+    if task:
+        try:
+            await process_task(task)
+            logger.info(f"Completed task {task['id']}")
+        except Exception as e:
+            logger.error(f"Task {task['id']} failed: {e}")
+    else:
+        await asyncio.sleep(5)  # Wait before checking again
+```
+
+### Session Management with JimDB
+
+```python
+class JimDBSessionManager:
+    def __init__(self, redis: JimdbApRedis):
+        self.redis = redis
+        self.session_prefix = "session"
+        self.session_ttl = 3600  # 1 hour
+    
+    async def create_session(self, user_id: str, session_data: dict):
+        """Create a new user session."""
+        session_id = str(uuid.uuid4())
+        session_key = f"{self.session_prefix}:{session_id}"
+        
+        # Store session data with multiple keys for efficient access
+        session_items = {
+            f"{session_key}:user_id": str(user_id),
+            f"{session_key}:created_at": str(time.time()),
+            f"{session_key}:data": json.dumps(session_data)
+        }
+        
+        await self.redis.mset(session_items, ex=self.session_ttl)
+        
+        # Store user -> session mapping for cleanup
+        await self.redis.set(
+            f"user_session:{user_id}", 
+            session_id, 
+            ex=self.session_ttl
+        )
+        
+        return session_id
+    
+    async def get_session(self, session_id: str):
+        """Retrieve session data."""
+        session_key = f"{self.session_prefix}:{session_id}"
+        
+        # Get all session components
+        keys = [
+            f"{session_key}:user_id",
+            f"{session_key}:created_at", 
+            f"{session_key}:data"
+        ]
+        
+        values = await self.redis.mget(keys)
+        
+        if values[0] is not None:  # Session exists
+            return {
+                "session_id": session_id,
+                "user_id": values[0].decode('utf-8'),
+                "created_at": float(values[1].decode('utf-8')),
+                "data": json.loads(values[2].decode('utf-8'))
+            }
+        
+        return None
+    
+    async def extend_session(self, session_id: str):
+        """Extend session expiration."""
+        session_key = f"{self.session_prefix}:{session_id}"
+        
+        # Check if session exists
+        if await self.redis.exists(f"{session_key}:user_id"):
+            # Extend all session components
+            keys = [f"{session_key}:user_id", f"{session_key}:created_at", f"{session_key}:data"]
+            
+            for key in keys:
+                await self.redis.expire(key, self.session_ttl)
+            
+            return True
+        
+        return False
+    
+    async def destroy_session(self, session_id: str):
+        """Destroy a session."""
+        session_key = f"{self.session_prefix}:{session_id}"
+        
+        # Get user ID before deletion
+        user_id_data = await self.redis.get(f"{session_key}:user_id")
+        
+        # Delete all session components
+        keys = [f"{session_key}:user_id", f"{session_key}:created_at", f"{session_key}:data"]
+        
+        deleted = 0
+        for key in keys:
+            deleted += await self.redis.delete(key)
+        
+        # Clean up user -> session mapping
+        if user_id_data:
+            user_id = user_id_data.decode('utf-8')
+            await self.redis.delete(f"user_session:{user_id}")
+        
+        return deleted > 0
+
+# Usage
+session_mgr = JimDBSessionManager(redis)
+
+# Create session
+session_id = await session_mgr.create_session("user123", {
+    "login_time": time.time(),
+    "ip_address": "192.168.1.1",
+    "permissions": ["read", "write"]
+})
+
+# Later - retrieve and extend session
+session = await session_mgr.get_session(session_id)
+if session:
+    await session_mgr.extend_session(session_id)
+    print(f"Extended session for user {session['user_id']}")
+```
+
+### Activity Logging with Automatic Rotation
+
+```python
+class JimDBActivityLogger:
+    def __init__(self, redis: JimdbApRedis):
+        self.redis = redis
+        self.log_prefix = "activity_log"
+        self.max_activities = 1000
+        self.log_retention = 7 * 24 * 3600  # 7 days
+    
+    async def log_activity(self, user_id: str, activity: dict):
+        """Log user activity with automatic rotation."""
+        log_key = f"{self.log_prefix}:{user_id}"
+        
+        # Enhance activity with metadata
+        enhanced_activity = {
+            "timestamp": time.time(),
+            "activity": activity,
+            "log_id": str(uuid.uuid4())
+        }
+        
+        # Use enhanced lpush with size management
+        await self.redis.lpush(
+            log_key,
+            enhanced_activity,
+            ex=self.log_retention,
+            max_size=self.max_activities,
+            max_length=2048  # 2KB max per activity
+        )
+    
+    async def get_recent_activities(self, user_id: str, limit: int = 50):
+        """Get recent activities for a user."""
+        log_key = f"{self.log_prefix}:{user_id}"
+        
+        # Get recent activities (most recent first due to lpush)
+        activities_data = await self.redis.lrange(log_key, 0, limit - 1)
+        
+        activities = []
+        for activity_data in activities_data:
+            try:
+                activity = json.loads(activity_data.decode('utf-8'))
+                activities.append(activity)
+            except json.JSONDecodeError:
+                logger.warning(f"Failed to decode activity: {activity_data}")
+        
+        return activities
+    
+    async def get_activity_summary(self, user_id: str):
+        """Get activity summary statistics."""
+        log_key = f"{self.log_prefix}:{user_id}"
+        
+        total_activities = await self.redis.llen(log_key)
+        
+        if total_activities == 0:
+            return {"total": 0, "recent": [], "oldest_timestamp": None}
+        
+        # Get a sample of recent activities for summary
+        recent_sample = await self.redis.lrange(log_key, 0, 9)  # Last 10
+        oldest_sample = await self.redis.lrange(log_key, -1, -1)  # First 1
+        
+        recent_activities = []
+        oldest_timestamp = None
+        
+        try:
+            if oldest_sample:
+                oldest_activity = json.loads(oldest_sample[0].decode('utf-8'))
+                oldest_timestamp = oldest_activity.get('timestamp')
+            
+            for activity_data in recent_sample:
+                activity = json.loads(activity_data.decode('utf-8'))
+                recent_activities.append(activity['activity'])
+        except json.JSONDecodeError:
+            logger.warning(f"Failed to decode activities for user {user_id}")
+        
+        return {
+            "total": total_activities,
+            "recent": recent_activities,
+            "oldest_timestamp": oldest_timestamp
+        }
+
+# Usage
+activity_logger = JimDBActivityLogger(redis)
+
+# Log various activities
+await activity_logger.log_activity("user123", {
+    "type": "page_view",
+    "page": "/dashboard",
+    "duration": 45.2
+})
+
+await activity_logger.log_activity("user123", {
+    "type": "api_call",
+    "endpoint": "/api/data",
+    "status": 200
+})
+
+# Get recent activities
+recent = await activity_logger.get_recent_activities("user123", limit=20)
+print(f"Found {len(recent)} recent activities")
+
+# Get summary
+summary = await activity_logger.get_activity_summary("user123")
+print(f"User has {summary['total']} total activities")
+```
+
+## Error Handling and Monitoring
+
+### Connection Health Monitoring
+
+```python
+class JimDBHealthMonitor:
+    def __init__(self, redis: JimdbApRedis):
+        self.redis = redis
+    
+    async def check_connection_health(self):
+        """Comprehensive connection health check."""
+        health_status = {
+            "connected": False,
+            "latency_ms": None,
+            "errors": []
+        }
+        
+        try:
+            # Test basic connectivity with ping-like operation
+            start_time = time.time()
+            
+            # Use a simple set/get operation as health check
+            test_key = f"health_check_{int(start_time)}"
+            await self.redis.set(test_key, "ok", ex=60)
+            result = await self.redis.get(test_key)
+            
+            end_time = time.time()
+            latency = (end_time - start_time) * 1000
+            
+            if result and result.decode('utf-8') == "ok":
+                health_status["connected"] = True
+                health_status["latency_ms"] = round(latency, 2)
+                
+                # Clean up test key
+                await self.redis.delete(test_key)
+            else:
+                health_status["errors"].append("Health check value mismatch")
+                
+        except Exception as e:
+            health_status["errors"].append(f"Connection error: {str(e)}")
+        
+        return health_status
+    
+    async def get_connection_info(self):
+        """Get connection configuration info."""
+        return {
+            "host": self.redis.host,
+            "port": self.redis.port,
+            "db": self.redis.db,
+            "pool_configured": self.redis.redis_pool is not None
+        }
+
+# Usage
+monitor = JimDBHealthMonitor(redis)
+health = await monitor.check_connection_health()
+
+if health["connected"]:
+    print(f"JimDB connection healthy - latency: {health['latency_ms']}ms")
+else:
+    print(f"JimDB connection issues: {health['errors']}")
+```
+
+### Graceful Error Recovery
+
+```python
+class RobustJimDBOperations:
+    def __init__(self, redis: JimdbApRedis):
+        self.redis = redis
+        self.fallback_data = {}
+    
+    async def robust_get(self, key: str, fallback_value=None):
+        """Get operation with fallback and error handling."""
+        try:
+            result = await self.redis.get(key)
+            if result is not None:
+                return result.decode('utf-8')
+            return fallback_value
+        except Exception as e:
+            logger.error(f"Failed to get {key}: {e}")
+            
+            # Check local fallback cache
+            if key in self.fallback_data:
+                logger.info(f"Using cached fallback for {key}")
+                return self.fallback_data[key]
+            
+            return fallback_value
+    
+    async def robust_set_with_fallback(self, key: str, value: str, ex: int = 3600):
+        """Set operation with local fallback caching."""
+        try:
+            result = await self.redis.set(key, value, ex=ex)
+            
+            # Cache locally for fallback
+            self.fallback_data[key] = value
+            
+            return result
+        except Exception as e:
+            logger.error(f"Failed to set {key}: {e}")
+            
+            # Store in local cache as fallback
+            self.fallback_data[key] = value
+            logger.info(f"Stored {key} in local fallback cache")
+            
+            return None
+    
+    async def circuit_breaker_operation(self, operation_func, *args, **kwargs):
+        """Execute operation with simple circuit breaker pattern."""
+        max_retries = 3
+        retry_delay = 1.0
+        
+        for attempt in range(max_retries):
+            try:
+                return await operation_func(*args, **kwargs)
+            except Exception as e:
+                logger.warning(f"Operation failed (attempt {attempt + 1}): {e}")
+                
+                if attempt < max_retries - 1:
+                    await asyncio.sleep(retry_delay * (2 ** attempt))  # Exponential backoff
+                else:
+                    logger.error("All retry attempts failed")
+                    raise
+```
+
+## Performance Optimization
+
+### Pipeline Usage Best Practices
+
+```python
+class OptimizedJimDBOperations:
+    def __init__(self, redis: JimdbApRedis):
+        self.redis = redis
+    
+    async def bulk_operations_with_pipeline(self, operations: list):
+        """Execute multiple operations efficiently using pipeline."""
+        try:
+            async with self.redis.redis_pool.pipeline(transaction=False) as pipe:
+                
+                for op in operations:
+                    op_type = op["type"]
+                    key = op["key"]
+                    
+                    if op_type == "set":
+                        pipe.set(key, op["value"], ex=op.get("ex"))
+                    elif op_type == "get":
+                        pipe.get(key)
+                    elif op_type == "delete":
+                        pipe.delete(key)
+                    elif op_type == "lpush":
+                        pipe.lpush(key, *op["values"])
+                
+                results = await pipe.execute()
+                return results
+                
+        except Exception as e:
+            logger.error(f"Pipeline operation failed: {e}")
+            return None
+    
+    async def efficient_batch_processing(self, batch_data: dict):
+        """Process batch data with optimized operations."""
+        # Group operations by type for efficiency
+        sets = []
+        gets = []
+        deletes = []
+        
+        for key, operation in batch_data.items():
+            if operation["action"] == "set":
+                sets.append((key, operation["value"]))
+            elif operation["action"] == "get":
+                gets.append(key)
+            elif operation["action"] == "delete":
+                deletes.append(key)
+        
+        results = {}
+        
+        # Batch set operations
+        if sets:
+            set_dict = {k: v for k, v in sets}
+            await self.redis.mset(set_dict, ex=3600)
+            results["sets"] = len(sets)
+        
+        # Batch get operations
+        if gets:
+            values = await self.redis.mget(gets)
+            results["gets"] = dict(zip(gets, values))
+        
+        # Individual delete operations (Redis doesn't have bulk delete)
+        if deletes:
+            deleted_count = 0
+            for key in deletes:
+                deleted_count += await self.redis.delete(key)
+            results["deletes"] = deleted_count
+        
+        return results
+```
+
+## Configuration and Environment
+
+### Production Configuration
+
+```python
+class JimDBConfig:
+    @staticmethod
+    def from_environment():
+        """Create JimDB Redis client from environment variables."""
+        return JimdbApRedis(
+            host=os.getenv("JIMDB_HOST", "localhost"),
+            port=int(os.getenv("JIMDB_PORT", "6379")),
+            password=os.getenv("JIMDB_PASSWORD", ""),
+            db=int(os.getenv("JIMDB_DB", "0"))
+        )
+    
+    @staticmethod  
+    def for_production(cluster_config: dict):
+        """Create production-ready JimDB client."""
+        return JimdbApRedis(
+            host=cluster_config["primary_host"],
+            port=cluster_config["port"],
+            password=cluster_config["password"],
+            db=cluster_config.get("database", 0)
+        )
+
+# Environment-based initialization
+redis = JimDBConfig.from_environment()
+
+# Production cluster initialization
+prod_config = {
+    "primary_host": "jimdb-cluster.prod.company.com",
+    "port": 6379,
+    "password": "super_secure_password",
+    "database": 3
+}
+redis = JimDBConfig.for_production(prod_config)
+```
+
+## See Also
+
+- [BaseRedis](./base-redis) - Abstract base class interface
+- [LocalRedis](./local-redis) - In-memory development implementation
+- [BaseDB](./base-db) - Parent class providing retry mechanisms
+- [Configuration Management](../config) - Redis configuration settings
+- [Database Services Overview](./index) - Complete database services documentation

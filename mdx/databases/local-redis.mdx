@@ -1,0 +1,593 @@
+---
+title: LocalRedis
+description: In-memory Redis simulation using Python data structures for development and testing environments
+---
+
+# LocalRedis
+
+The `LocalRedis` class provides a lightweight, in-memory implementation of Redis-like key-value store functionality. It uses Python's built-in data structures to simulate Redis operations, making it perfect for development, testing, and environments where a full Redis server is not available or needed.
+
+## Overview
+
+`LocalRedis` is designed to provide Redis functionality without external dependencies. It offers:
+
+- **In-memory Storage**: Uses Python dictionaries and deques for data storage
+- **Automatic Expiration**: Built-in TTL support with automatic cleanup
+- **List Operations**: Full support for Redis-style list operations with size limits
+- **Type Safety**: Handles multiple value types with automatic conversion
+- **Development-friendly**: No server setup or configuration required
+
+## Class Definition
+
+```python
+from oxygent.databases.db_redis.local_redis import LocalRedis
+
+# Initialize with automatic configuration
+redis = LocalRedis()
+
+# All operations use in-memory storage
+await redis.lpush("my_list", "item1", "item2")
+value = await redis.rpop("my_list")
+```
+
+## Constructor
+
+### __init__()
+
+Initializes the LocalRedis instance with configuration from the OxyGent Config system.
+
+**Attributes**:
+- `data`: Dictionary storing key-value pairs (keys map to deques for list operations)
+- `expiry`: Dictionary tracking expiration times for keys
+- `default_expire_time`: Default TTL from Config (1 day)
+- `default_list_max_size`: Maximum list size from Config
+- `default_list_max_length`: Maximum string length from Config (20MB)
+
+```python
+redis = LocalRedis()
+
+# Internal structure:
+# redis.data = {}  # Key -> deque mapping
+# redis.expiry = {}  # Key -> expiration timestamp mapping
+# redis.default_expire_time = 86400  # 24 hours
+# redis.default_list_max_size = 10   # Max 10 items per list
+# redis.default_list_max_length = 20971520  # 20MB max string length
+```
+
+## Core Methods
+
+### async lpush(key: str, *values, ex: int = None, max_size: int = None, max_length: int = None) -> int
+
+Pushes one or more values to the left (head) of a list with comprehensive size management.
+
+**Parameters**:
+- `key` (str): The list key to push values to
+- `*values` (Union[bytes, int, str, float, dict]): Values to push (supports multiple types)
+- `ex` (int, optional): Expiration time in seconds (default: 1 day)
+- `max_size` (int, optional): Maximum number of elements in list (default: from config)
+- `max_length` (int, optional): Maximum length for string/bytes values (default: 20MB)
+
+**Returns**: The length of the list after the push operation
+
+**Behavior**:
+- Creates new deque if key doesn't exist
+- Processes and validates all input values by type
+- Truncates strings/bytes to max_length
+- Converts dictionaries to JSON strings
+- Maintains LIFO order with proper value insertion
+- Automatically sets expiration time
+
+**Supported Value Types**:
+- **str/bytes**: Truncated to max_length if necessary
+- **int/float**: Added as-is (no truncation)
+- **dict**: Converted to JSON string and truncated
+- **Unsupported types**: Raises ValueError
+
+```python
+# Basic usage
+length = await redis.lpush("notifications", "New message")
+print(f"List length: {length}")
+
+# Multiple values with different types
+await redis.lpush("mixed_data", 
+    "string_value",
+    42, 
+    {"key": "value"},
+    ex=3600  # 1 hour expiration
+)
+
+# Custom limits
+await redis.lpush("limited_list",
+    "item1", "item2", "item3",
+    max_size=5,      # Keep only 5 items
+    max_length=1000  # Truncate strings at 1000 chars
+)
+
+# Long string truncation example
+long_string = "x" * 50000
+await redis.lpush("test_list", long_string, max_length=1000)
+# String is automatically truncated to 1000 characters
+```
+
+### async rpop(key: str) -> Union[str, bytes, int, float, None]
+
+Removes and returns the last (rightmost, tail) element from a list.
+
+**Parameters**:
+- `key` (str): The list key to pop from
+
+**Returns**: The removed element, or None if the list is empty or doesn't exist
+
+**Behavior**:
+- Automatically checks key expiration before operation
+- Removes expired keys and their expiration entries
+- Returns None for non-existent or empty lists
+- Maintains proper LIFO behavior (last pushed, first popped)
+
+```python
+# Basic pop operation
+item = await redis.rpop("notifications")
+if item is not None:
+    print(f"Popped item: {item}")
+else:
+    print("List is empty or doesn't exist")
+
+# Worker pattern - process items from queue
+while True:
+    task = await redis.rpop("task_queue")
+    if task:
+        await process_task(task)
+    else:
+        break  # No more tasks
+```
+
+### async close()
+
+Cleans up resources (no-op for in-memory implementation).
+
+**Returns**: None
+
+**Behavior**:
+- Maintains compatibility with Redis interface
+- No actual cleanup needed for in-memory storage
+- Async signature matches BaseRedis interface requirements
+
+```python
+try:
+    # Perform operations
+    await redis.lpush("test", "data")
+    result = await redis.rpop("test")
+finally:
+    await redis.close()  # No-op but maintains interface compatibility
+```
+
+## Internal Methods
+
+### _check_expiry(key: str)
+
+Internal method that checks and handles key expiration.
+
+**Parameters**:
+- `key` (str): The key to check for expiration
+
+**Behavior**:
+- Compares current time with stored expiration timestamp
+- Removes expired keys from both data and expiry dictionaries
+- Called automatically by all read operations
+
+```python
+# This method is called internally:
+# Before rpop operation:
+redis._check_expiry("my_key")  # Removes key if expired
+
+# Manual expiration check (not typically needed):
+redis._check_expiry("some_key")
+```
+
+## Data Structure Details
+
+### Internal Storage Format
+
+```python
+# Example internal state after operations:
+redis.data = {
+    "user_notifications": deque(["msg3", "msg2", "msg1"], maxlen=10),
+    "task_queue": deque([123, 456, 789], maxlen=10),
+    "json_data": deque(['{"key": "value"}'], maxlen=10)
+}
+
+redis.expiry = {
+    "user_notifications": 1725264000.0,  # Unix timestamp
+    "task_queue": 1725267600.0,
+    "json_data": 1725261000.0
+}
+```
+
+### Value Processing Examples
+
+```python
+# String value processing
+await redis.lpush("strings", "Hello World")
+# Stored as: deque(["Hello World"])
+
+# Integer/float processing  
+await redis.lpush("numbers", 42, 3.14, -100)
+# Stored as: deque([42, 3.14, -100])
+
+# Dictionary processing
+user_data = {"id": 123, "name": "John", "active": True}
+await redis.lpush("users", user_data)
+# Stored as: deque(['{"id": 123, "name": "John", "active": true}'])
+
+# Mixed types
+await redis.lpush("mixed", "text", 42, {"key": "val"})
+# Stored as: deque(["text", 42, '{"key": "val"}'])
+```
+
+## Usage Examples
+
+### Simple Cache Implementation
+
+```python
+class SimpleCache:
+    def __init__(self):
+        self.redis = LocalRedis()
+    
+    async def set_cache(self, key: str, value: str, ttl: int = 3600):
+        """Set a cached value with TTL."""
+        await self.redis.lpush(f"cache:{key}", value, ex=ttl)
+    
+    async def get_cache(self, key: str):
+        """Get a cached value."""
+        value = await self.redis.rpop(f"cache:{key}")
+        if value is not None:
+            # Put it back since we just wanted to read it
+            await self.redis.lpush(f"cache:{key}", value)
+        return value
+    
+    async def invalidate_cache(self, key: str):
+        """Remove a cached value."""
+        # Consume all items to effectively clear the list
+        while await self.redis.rpop(f"cache:{key}") is not None:
+            pass
+
+# Usage
+cache = SimpleCache()
+await cache.set_cache("user:123", "John Doe", ttl=1800)
+user_name = await cache.get_cache("user:123")
+```
+
+### Task Queue System
+
+```python
+class TaskQueue:
+    def __init__(self, queue_name: str = "default"):
+        self.redis = LocalRedis()
+        self.queue_name = f"queue:{queue_name}"
+    
+    async def enqueue(self, task_data: dict, priority: int = 1):
+        """Add a task to the queue with priority."""
+        task = {
+            "data": task_data,
+            "priority": priority,
+            "created_at": time.time()
+        }
+        
+        # Higher priority tasks are processed first (lower number = higher priority)
+        await self.redis.lpush(
+            f"{self.queue_name}:p{priority}",
+            task,
+            ex=7200  # Tasks expire after 2 hours
+        )
+    
+    async def dequeue(self):
+        """Get the next task from highest priority queues."""
+        # Check priority queues in order (1 = highest, 5 = lowest)
+        for priority in range(1, 6):
+            task = await self.redis.rpop(f"{self.queue_name}:p{priority}")
+            if task is not None:
+                # Parse JSON back to dict
+                import json
+                return json.loads(task) if isinstance(task, str) else task
+        
+        return None  # No tasks available
+    
+    async def get_queue_stats(self):
+        """Get statistics about queue sizes."""
+        stats = {}
+        for priority in range(1, 6):
+            queue_key = f"{self.queue_name}:p{priority}"
+            # Count items by repeatedly checking if items exist
+            count = 0
+            temp_items = []
+            
+            # Pop all items to count them
+            while True:
+                item = await self.redis.rpop(queue_key)
+                if item is None:
+                    break
+                temp_items.append(item)
+                count += 1
+            
+            # Put items back
+            if temp_items:
+                await self.redis.lpush(queue_key, *reversed(temp_items))
+            
+            stats[f"priority_{priority}"] = count
+        
+        return stats
+
+# Usage
+queue = TaskQueue("email_processor")
+
+# Add high priority task
+await queue.enqueue({"type": "welcome_email", "user_id": 123}, priority=1)
+
+# Add normal priority task  
+await queue.enqueue({"type": "newsletter", "user_id": 456}, priority=3)
+
+# Process tasks
+while True:
+    task = await queue.dequeue()
+    if task:
+        print(f"Processing: {task}")
+        # Process the task...
+    else:
+        break  # No more tasks
+```
+
+### Activity Log with Size Limits
+
+```python
+class ActivityLogger:
+    def __init__(self, max_activities: int = 100):
+        self.redis = LocalRedis()
+        self.max_activities = max_activities
+    
+    async def log_activity(self, user_id: str, action: str, details: dict):
+        """Log user activity with automatic size management."""
+        activity = {
+            "timestamp": time.time(),
+            "action": action,
+            "details": details,
+            "user_id": user_id
+        }
+        
+        log_key = f"activity:{user_id}"
+        
+        # Use max_size to automatically limit list size
+        await self.redis.lpush(
+            log_key,
+            activity,
+            max_size=self.max_activities,  # Keep only last N activities
+            ex=2592000  # 30 days retention
+        )
+    
+    async def get_recent_activities(self, user_id: str, limit: int = 10):
+        """Get recent activities for a user."""
+        log_key = f"activity:{user_id}"
+        activities = []
+        
+        # Pop items up to the limit, then put them back
+        temp_items = []
+        for _ in range(limit):
+            item = await self.redis.rpop(log_key)
+            if item is None:
+                break
+            temp_items.append(item)
+            activities.append(json.loads(item) if isinstance(item, str) else item)
+        
+        # Put items back in reverse order to maintain chronology
+        if temp_items:
+            await self.redis.lpush(log_key, *reversed(temp_items))
+        
+        return activities
+
+# Usage
+logger = ActivityLogger(max_activities=50)
+
+# Log various activities
+await logger.log_activity("user123", "login", {"ip": "192.168.1.1"})
+await logger.log_activity("user123", "view_page", {"page": "/dashboard"})
+await logger.log_activity("user123", "logout", {"session_duration": 3600})
+
+# Get recent activities
+recent = await logger.get_recent_activities("user123", limit=5)
+for activity in recent:
+    print(f"{activity['action']} at {activity['timestamp']}")
+```
+
+### Configuration-based Service
+
+```python
+class ConfiguredRedisService:
+    def __init__(self):
+        self.redis = LocalRedis()
+        
+        # Configuration is automatically loaded from Config
+        print(f"Default expire time: {self.redis.default_expire_time} seconds")
+        print(f"Max list size: {self.redis.default_list_max_size}")
+        print(f"Max string length: {self.redis.default_list_max_length} bytes")
+    
+    async def store_with_defaults(self, key: str, *values):
+        """Store values using default configuration."""
+        return await self.redis.lpush(key, *values)
+    
+    async def store_with_custom_limits(self, key: str, values: list):
+        """Store values with custom size limits."""
+        return await self.redis.lpush(
+            key, 
+            *values,
+            ex=3600,        # Custom expiration
+            max_size=20,    # Custom max size
+            max_length=5000 # Custom max length
+        )
+
+# Usage
+service = ConfiguredRedisService()
+await service.store_with_defaults("test", "value1", "value2")
+```
+
+## Performance Characteristics
+
+### Time Complexity
+
+- **lpush**: O(1) per value (deque.extendleft)
+- **rpop**: O(1) per operation (deque.pop) 
+- **_check_expiry**: O(1) (dictionary lookup and deletion)
+
+### Memory Usage
+
+- **Efficient**: Uses native Python data structures
+- **Automatic Cleanup**: Expired keys are automatically removed
+- **Size Limits**: Configurable limits prevent unbounded growth
+
+### Limitations
+
+**Not Suitable For**:
+- Production applications with high concurrency
+- Persistent storage requirements (data is lost on restart)  
+- Large datasets (everything is in memory)
+- Multi-process applications (no shared state)
+
+**Good For**:
+- Development and testing
+- Single-process applications
+- Small to medium datasets
+- Prototyping Redis-based features
+
+## Configuration Integration
+
+LocalRedis automatically integrates with the OxyGent configuration system:
+
+```python
+# Configuration values from Config class:
+# Config.get_redis_expire_time()    # Default: 86400 seconds (1 day)
+# Config.get_redis_max_size()       # Default: 10 items
+# Config.get_redis_max_length()     # Default: 20 KB (20 * 1024 bytes)
+
+# Custom configuration
+class CustomLocalRedis(LocalRedis):
+    def __init__(self, custom_config: dict):
+        super().__init__()
+        self.default_expire_time = custom_config.get("expire_time", 3600)
+        self.default_list_max_size = custom_config.get("max_size", 50)
+        self.default_list_max_length = custom_config.get("max_length", 1024*1024)
+```
+
+## Error Handling
+
+### Value Type Validation
+
+```python
+try:
+    # This will raise ValueError for unsupported types
+    await redis.lpush("test", object())  # Unsupported type
+except ValueError as e:
+    print(f"Invalid value type: {e}")
+
+# Valid types
+await redis.lpush("test", 
+    "string",           # str ✓
+    b"bytes",          # bytes ✓  
+    42,                # int ✓
+    3.14,              # float ✓
+    {"key": "value"}   # dict ✓ (converted to JSON)
+)
+```
+
+### Expiration Handling
+
+```python
+# Set short expiration for testing
+await redis.lpush("temp", "data", ex=1)  # 1 second
+
+# Wait for expiration
+await asyncio.sleep(2)
+
+# Key is automatically cleaned up
+result = await redis.rpop("temp")  # Returns None
+
+# Check expiry status manually
+redis._check_expiry("some_key")  # Manual cleanup if needed
+```
+
+## Comparison with Real Redis
+
+### Similarities
+
+- **List Operations**: lpush, rpop behavior matches Redis
+- **Expiration**: TTL support with automatic cleanup
+- **Value Types**: Support for strings, numbers, binary data
+- **LIFO Behavior**: Proper ordering for list operations
+
+### Differences
+
+- **Persistence**: In-memory only (Redis has disk persistence)
+- **Networking**: No client-server model (Redis supports remote connections)
+- **Commands**: Limited subset of Redis commands
+- **Atomicity**: No transaction support (Redis has MULTI/EXEC)
+- **Clustering**: No distributed features (Redis supports clustering)
+
+### Migration Path
+
+```python
+# LocalRedis code
+redis = LocalRedis()
+await redis.lpush("queue", "item1", "item2")
+item = await redis.rpop("queue")
+
+# Equivalent Redis code (when switching to production)
+import aioredis
+redis = aioredis.from_url("redis://localhost")
+await redis.lpush("queue", "item1", "item2") 
+item = await redis.rpop("queue")
+await redis.close()
+```
+
+## Testing and Development
+
+### Unit Test Helper
+
+```python
+class LocalRedisTest:
+    def setUp(self):
+        self.redis = LocalRedis()
+    
+    async def test_basic_operations(self):
+        # Test push and pop
+        length = await self.redis.lpush("test", "item1")
+        assert length == 1
+        
+        item = await self.redis.rpop("test")
+        assert item == "item1"
+        
+        # Test empty list
+        empty = await self.redis.rpop("test")
+        assert empty is None
+    
+    async def test_expiration(self):
+        # Set short expiration
+        await self.redis.lpush("expire_test", "data", ex=1)
+        
+        # Should exist immediately
+        item = await self.redis.rpop("expire_test")
+        assert item == "data"
+        
+        # Put it back
+        await self.redis.lpush("expire_test", "data", ex=1)
+        
+        # Wait for expiration
+        await asyncio.sleep(2)
+        
+        # Should be expired
+        expired = await self.redis.rpop("expire_test")
+        assert expired is None
+```
+
+## See Also
+
+- [BaseRedis](./base-redis) - Abstract base class interface
+- [JimdbApRedis](./jimdb-ap-redis) - Production Redis implementation  
+- [Configuration Management](../config) - Redis configuration settings
+- [Database Services Overview](./index) - Complete database services documentation
