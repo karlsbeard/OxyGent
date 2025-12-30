@@ -285,14 +285,24 @@
 /* 激活状态（点赞/点踩后） */
 .btn-icon.active svg {
     fill: currentColor;
+    animation: icon-pop 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
 }
 
 .btn-icon.active.like,
 .btn-icon.active.dislike {
-    color: #155EEF; /* 统一为蓝色 */
+    color: #155EEF;
 }
 
-/* 反馈面板样式 (Final Refined) */
+@keyframes icon-pop {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.4); }
+    100% { transform: scale(1); }
+}
+
+/* 移除旧的反馈文字样式 */
+.rating-feedback {
+    display: none !important;
+}
 .feedback-panel {
     display: none;
     margin-top: 10px;

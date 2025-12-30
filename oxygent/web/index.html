@@ -859,36 +859,11 @@
         erp: "oxygent"
     };
 
-    function show_rating_feedback(container, text, is_success) {
-        if (!container) {
-            return;
-        }
-        var feedback = container.find(".rating-feedback");
-        if (feedback.length === 0) {
-            feedback = $('<div class="rating-feedback">');
-            container.append(feedback);
-        }
-        feedback
-            .text(text)
-            .removeClass("success error")
-            .addClass(is_success ? "success" : "error")
-            .show();
-        setTimeout(function () {
-            feedback.fadeOut(200, function () {
-                feedback.remove();
-            });
-        }, 1200);
-    }
-
     function submit_rating(container, rating_type, comment) {
         var trace_id = container.data("trace-id");
         if (!trace_id) {
-            show_rating_feedback(container, "Missing trace_id", false);
             return;
         }
-        
-        // Prevent double submission if needed, or allow updating. 
-        // Gemini usually allows changing rating. Let's allow update.
         
         fetch(rating_config.endpoint, {
             method: "POST",
@@ -907,23 +882,18 @@
                 return response.json();
             })
             .then(function () {
-                // UI Update
-                var li = container.closest("li");
-                
                 // Reset active states
                 container.find(".btn-icon").removeClass("active");
                 
-                // Set new active state
+                // Set new active state (triggers CSS animation)
                 if (rating_type === "like") {
                     container.find(".btn-icon.like").addClass("active");
                 } else if (rating_type === "dislike") {
                     container.find(".btn-icon.dislike").addClass("active");
                 }
-                
-                show_rating_feedback(container, "Feedback submitted", true);
             })
-            .catch(function () {
-                show_rating_feedback(container, "Submission failed", false);
+            .catch(function (err) {
+                console.error("Rating submission error:", err);
             });
     }
 
