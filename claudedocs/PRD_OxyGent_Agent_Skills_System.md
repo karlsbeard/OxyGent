@@ -2,7 +2,7 @@
 
 ## Product Requirements Document
 **Version**: 2.0
-**Date**: 2024-12-28
+**Date**: 2025-12-28
 **Author**: Claude Code Analysis
 **Status**: Draft for Review
 
@@ -93,6 +93,8 @@ Modern agent frameworks (Claude Agent SDK) distinguish between:
 - ❌ Wrapping tools as skills (they remain separate concepts)
 - ❌ Concurrent skill execution (one active skill at a time)
 - ❌ Visual skill builder UI
+- ❌ Skill awareness for non-ReAct agents (v1.0 only ReActAgent is skill-aware to avoid context bloat)
+- ❌ Sub-agent skill support (explicitly out of scope for v1.0)
 
 ---
 
@@ -360,6 +362,7 @@ Produce a structured review report:
 - Verify docstring completeness
 - Review exception handling
 - Check import organization
+- Verify dependency pinning (requirements/pyproject)
 
 ### JavaScript/TypeScript
 - Review async/await patterns
@@ -367,10 +370,17 @@ Produce a structured review report:
 - Verify type safety (TS)
 - Review module organization
 
+### Java
+- Review exception handling
+- Check thread safety and concurrency
+- Verify resource management (try-with-resources)
+- Review dependency versions (Maven/Gradle)
+
 ### Go
 - Check error handling patterns
 - Review goroutine safety
 - Verify interface usage
+- Check context propagation/cancellation
 
 ## Examples
 
@@ -381,6 +391,19 @@ User: "Review auth.py for security issues"
 ### Example 2: Full Review
 User: "Review the entire src/ directory"
 → Comprehensive review of all files, prioritize by risk
+```
+
+### Skill Directory Layout (Claude Code Compatible)
+
+Each skill may include additional files beyond `SKILL.md` for progressive disclosure:
+
+```
+my-skill/
+├── SKILL.md          # required - overview and navigation
+├── reference.md      # detailed docs - loaded on demand
+├── examples.md       # usage examples - loaded on demand
+└── scripts/
+    └── helper.py     # utility script - executed, not loaded
 ```
 
 ### Frontmatter Fields
@@ -748,10 +771,12 @@ class SkillTool(BaseTool):
         )
 ```
 
-### 5. Agent Integration
+### 5. Agent Integration (ReActAgent-Only in v1.0)
+
+**Note**: v1.0 integrates skills only in `ReActAgent` to avoid context bloat. A shared mixin for non-ReAct agents is **deferred (TODO)**.
 
 ```python
-# oxygent/oxy/agents/skill_aware_agent.py (Mixin or modifications to LocalAgent)
+# oxygent/oxy/agents/skill_aware_agent.py (Deferred: future non-ReAct support)
 
 class SkillAwareAgentMixin:
     """
@@ -923,6 +948,16 @@ class ReActAgent(LocalAgent):
         return self.permitted_tool_name_list
 ```
 
+### Sub-Agent Considerations (Deferred)
+
+Sub-agents are **not** skill-aware in v1.0. Reserve a design hook for future work, with two candidate approaches:
+
+- **Explicit injection**: parent agent passes selected skill context into sub-agent system prompt.
+- **Shared inheritance**: sub-agent inherits a shared `SkillRegistry` and applies skill context locally.
+
+This is intentionally deferred to avoid context bloat and performance regressions in the initial release.
+**TODO**: decide between explicit injection vs shared inheritance when sub-agent support is scheduled.
+
 ---
 
 ## Skill Composition: LLM-Driven Chaining
@@ -1013,24 +1048,44 @@ oxygent/
 │   │
 │   ├── agents/
 │   │   ├── react_agent.py           # MODIFIED: Skill-aware
-│   │   └── local_agent.py           # MODIFIED: Skill support
+│   │   └── local_agent.py           # Unchanged in v1.0 (skills are ReAct-only)
 │   │
 │   └── ...
 │
 ├── preset_skills/                   # NEW: Built-in skills
 │   ├── code-reviewer/
-│   │   └── SKILL.md
+│   │   ├── SKILL.md
+│   │   ├── reference.md
+│   │   ├── examples.md
+│   │   └── scripts/
+│   │       └── helper.py
 │   ├── web-researcher/
-│   │   └── SKILL.md
+│   │   ├── SKILL.md
+│   │   ├── reference.md
+│   │   ├── examples.md
+│   │   └── scripts/
+│   │       └── helper.py
 │   ├── summarizer/
-│   │   └── SKILL.md
+│   │   ├── SKILL.md
+│   │   ├── reference.md
+│   │   ├── examples.md
+│   │   └── scripts/
+│   │       └── helper.py
 │   └── technical-writer/
-│       └── SKILL.md
+│       ├── SKILL.md
+│       ├── reference.md
+│       ├── examples.md
+│       └── scripts/
+│           └── helper.py
 │
 └── .oxygent/                        # Project-level configuration
     └── skills/                      # Project-specific skills
         └── custom-skill/
-            └── SKILL.md
+            ├── SKILL.md
+            ├── reference.md
+            ├── examples.md
+            └── scripts/
+                └── helper.py
 ```
 
 ---
@@ -1061,7 +1116,9 @@ oxygent/
 | MAS integration | P0 | 1d | Initialize registry, register Skill tool |
 | Integration tests | P0 | 1d | End-to-end skill invocation |
 
-**Deliverable**: Agents can invoke skills and receive context injection
+**Deliverable**: ReActAgent can invoke skills and receive context injection
+
+**Scope note**: v1.0 is ReActAgent-only. **TODO**: evaluate non-ReAct agent and sub-agent support in a future phase.
 
 ### Phase 3: Preset Skills (Week 5-6)
 
