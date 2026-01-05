@@ -188,7 +188,7 @@ Phase 6: ENVIRONMENT MODIFICATION
 ┌─────────────────────────────────────────────────────────────────┐
 │  Modify agent's execution environment:                          │
 │  - Tool permissions: allowed-tools: [Read, Glob, Grep]          │
-│  - Model selection: model: claude-3-opus (if specified)         │
+│  - Model selection:  (if specified)         │
 │  - Timeout adjustment: timeout: 300                              │
 │  - Memory context: inject skill-specific memory                  │
 └─────────────────────────────────────────────────────────────────┘
@@ -276,7 +276,7 @@ allowed-tools:
   - Grep
 
 # Model preference (optional)
-model: claude-3-opus
+
 
 # Resource files (loaded with skill)
 resources:

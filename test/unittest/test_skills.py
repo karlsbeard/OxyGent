@@ -521,7 +521,7 @@ description: A skill with environment mods
 allowed-tools:
   - Read
   - Grep
-model: claude-3-opus
+
 timeout: 120
 ---
 

@@ -65,7 +65,7 @@ version: "1.0.0"
 allowed-tools:
   - Read
   - Grep
-model: claude-3-opus
+
 timeout: 120
 ---
 

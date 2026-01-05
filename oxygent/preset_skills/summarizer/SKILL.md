@@ -7,8 +7,6 @@ author: OxyGent Team
 allowed-tools:
   - Read
   - Glob
-
-model: claude-3-opus
 ---
 
 # Summarizer Skill

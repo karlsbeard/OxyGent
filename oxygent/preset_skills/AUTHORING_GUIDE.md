@@ -287,7 +287,7 @@ Use `model` to specify the best model for the skill:
 
 ```yaml
 ---
-model: claude-3-opus
+
 ---
 ```
 
@@ -511,7 +511,7 @@ allowed-tools:
   - Write
   - HttpTool
 
-model: claude-3-opus
+
 timeout: 180
 
 resources:

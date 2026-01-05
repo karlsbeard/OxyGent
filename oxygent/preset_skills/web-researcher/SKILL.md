@@ -7,8 +7,6 @@ author: OxyGent Team
 allowed-tools:
   - Read
   - HttpTool
-
-model: claude-3-opus
 timeout: 180
 ---
 

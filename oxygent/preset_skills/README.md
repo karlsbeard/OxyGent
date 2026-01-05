@@ -62,7 +62,7 @@ allowed-tools:
   - Grep
   - Write
 
-model: claude-3-opus
+
 timeout: 120
 
 resources:

@@ -8,8 +8,6 @@ allowed-tools:
   - Read
   - Glob
   - Grep
-
-model: claude-3-opus
 timeout: 180
 ---
 
