@@ -72,6 +72,19 @@ class SkillContent(BaseModel):
         description="Path to the SKILL.md file",
     )
 
+    disable_model_invocation: bool = Field(
+        False,
+        description="If true, this skill must not be auto-invoked by the system/model",
+    )
+    user_invocable: bool = Field(
+        True,
+        description="If false, this skill must not be manually invoked by /skill-name",
+    )
+    argument_hint: Optional[str] = Field(
+        None,
+        description="Optional hint for user-provided arguments",
+    )
+
     def to_context_injection(self) -> str:
         """Format for conversation context injection.
 
@@ -117,6 +130,9 @@ class SkillContent(BaseModel):
             "model": self.model,
             "timeout": self.timeout,
             "resources": list(self.resources.keys()),
+            "disable_model_invocation": self.disable_model_invocation,
+            "user_invocable": self.user_invocable,
+            "argument_hint": self.argument_hint,
         }
 
     def get_environment_modifications(self) -> dict:
@@ -168,6 +184,20 @@ class SkillContent(BaseModel):
         if "description" not in frontmatter:
             raise ValueError("Skill frontmatter missing required field: description")
 
+        disable_model_invocation = frontmatter.get("disable-model-invocation")
+        if disable_model_invocation is None:
+            disable_model_invocation = frontmatter.get(
+                "disable_model_invocation", False
+            )
+
+        user_invocable = frontmatter.get("user-invocable")
+        if user_invocable is None:
+            user_invocable = frontmatter.get("user_invocable", True)
+
+        argument_hint = frontmatter.get("argument-hint")
+        if argument_hint is None:
+            argument_hint = frontmatter.get("argument_hint")
+
         # Handle both 'allowed-tools' and 'allowed_tools' naming conventions
         allowed_tools_raw = frontmatter.get("allowed-tools")
         if allowed_tools_raw is None:
@@ -201,6 +231,9 @@ class SkillContent(BaseModel):
             timeout=frontmatter.get("timeout"),
             resources=loaded_resources or {},
             skill_path=skill_path,
+            disable_model_invocation=bool(disable_model_invocation),
+            user_invocable=bool(user_invocable),
+            argument_hint=argument_hint if isinstance(argument_hint, str) else None,
         )
 
     def __repr__(self) -> str:

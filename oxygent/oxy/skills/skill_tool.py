@@ -57,7 +57,15 @@ class SkillTool(BaseTool):
             "name": {
                 "type": "string",
                 "description": "The name of the skill to invoke",
-            }
+            },
+            "arguments": {
+                "type": "string",
+                "description": "Optional argument string passed to the skill (used for $ARGUMENTS substitution)",
+            },
+            "invocation_source": {
+                "type": "string",
+                "description": "Invocation source: user | selector | model",
+            },
         },
         "required": ["name"],
     }
@@ -83,11 +91,19 @@ class SkillTool(BaseTool):
                 - extra: Environment modifications and skill metadata
         """
         skill_name = oxy_request.arguments.get("name")
+        skill_args = oxy_request.arguments.get("arguments")
+        invocation_source = oxy_request.arguments.get("invocation_source", "model")
+        if not isinstance(invocation_source, str) or not invocation_source.strip():
+            invocation_source = "model"
+        invocation_source = invocation_source.strip()
+
+        if not isinstance(skill_args, str):
+            skill_args = "" if skill_args is None else str(skill_args)
 
         if not skill_name:
             return OxyResponse(
                 state=OxyState.FAILED,
-                output="Skill name is required. Usage: Skill(name=\"skill-name\")",
+                output='Skill name is required. Usage: Skill(name="skill-name")',
             )
 
         # Get skill registry from request's mas if not set
@@ -106,8 +122,7 @@ class SkillTool(BaseTool):
             available = ", ".join(registry.metadata_index.keys())
             return OxyResponse(
                 state=OxyState.FAILED,
-                output=f"Skill '{skill_name}' not found. "
-                f"Available skills: {available}",
+                output=f"Skill '{skill_name}' not found. Available skills: {available}",
             )
 
         # Load full skill content (on-demand)
@@ -118,8 +133,42 @@ class SkillTool(BaseTool):
                 output=f"Failed to load content for skill '{skill_name}'",
             )
 
+        # Enforce invocation policy
+        if invocation_source == "model":
+            return OxyResponse(
+                state=OxyState.SKIPPED,
+                output=(
+                    "Skill tool invocation from the model is not supported in this runtime. "
+                    "Use selector-based activation or manual /skill-name invocation."
+                ),
+            )
+        if invocation_source == "selector" and getattr(
+            skill_content, "disable_model_invocation", False
+        ):
+            return OxyResponse(
+                state=OxyState.SKIPPED,
+                output=(
+                    f"Skill '{skill_name}' has disable-model-invocation=true; selector activation blocked."
+                ),
+            )
+        if (
+            invocation_source == "user"
+            and getattr(skill_content, "user_invocable", True) is False
+        ):
+            return OxyResponse(
+                state=OxyState.SKIPPED,
+                output=(
+                    f"Skill '{skill_name}' is not user-invocable (user-invocable=false)."
+                ),
+            )
+
         # Build context injection
         context_injection = skill_content.to_context_injection()
+        if skill_args.strip():
+            if "$ARGUMENTS" in context_injection:
+                context_injection = context_injection.replace("$ARGUMENTS", skill_args)
+            else:
+                context_injection = context_injection + "\n\nARGUMENTS: " + skill_args
 
         # Build execution environment modifications
         env_mods = skill_content.get_environment_modifications()
@@ -138,6 +187,7 @@ class SkillTool(BaseTool):
             output=context_injection,
             extra={
                 "skill_name": skill_name,
+                "invocation_source": invocation_source,
                 "environment_modifications": env_mods,
                 "context_type": "skill_injection",
                 "skill_version": skill_content.version,
@@ -158,8 +208,10 @@ class SkillTool(BaseTool):
     def _set_desc_for_llm(self):
         """Generate LLM-friendly description."""
         self.desc_for_llm = f"""
-Tool: {self.name}
-Description: {self.desc}
-Arguments:
-- name: string, The name of the skill to invoke (required)
-"""
+ Tool: {self.name}
+ Description: {self.desc}
+ Arguments:
+ - name: string, The name of the skill to invoke (required)
+ - arguments: string, Optional argument string passed to the skill
+ - invocation_source: string, Invocation source (user|selector|model)
+ """

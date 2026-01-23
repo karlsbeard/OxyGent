@@ -77,7 +77,9 @@ def temp_skill_dir(sample_skill_content, sample_skill_with_resources):
         resource_skill_dir = skill_dir / "resource-skill"
         resource_skill_dir.mkdir()
         (resource_skill_dir / "SKILL.md").write_text(sample_skill_with_resources)
-        (resource_skill_dir / "examples.md").write_text("# Examples\n\nExample 1\nExample 2")
+        (resource_skill_dir / "examples.md").write_text(
+            "# Examples\n\nExample 1\nExample 2"
+        )
         (resource_skill_dir / "template.txt").write_text("Template content here")
 
         yield skill_dir
@@ -92,7 +94,9 @@ def skill_registry(temp_skill_dir):
 @pytest.fixture
 def skill_tool(skill_registry):
     """Create a skill tool with registry."""
-    return SkillTool(name="Skill", desc="Test Skill tool", skill_registry=skill_registry)
+    return SkillTool(
+        name="Skill", desc="Test Skill tool", skill_registry=skill_registry
+    )
 
 
 @pytest.fixture
@@ -148,9 +152,7 @@ def test_skill_metadata_from_frontmatter():
         "author": "Test Author",
     }
 
-    metadata = SkillMetadata.from_frontmatter(
-        frontmatter, Path("/test/SKILL.md")
-    )
+    metadata = SkillMetadata.from_frontmatter(frontmatter, Path("/test/SKILL.md"))
 
     assert metadata.name == "test-skill"
     assert metadata.description == "A test skill"
@@ -160,14 +162,10 @@ def test_skill_metadata_from_frontmatter():
 def test_skill_metadata_missing_required_fields():
     """Test that missing required fields raise ValueError."""
     with pytest.raises(ValueError, match="missing required field: name"):
-        SkillMetadata.from_frontmatter(
-            {"description": "test"}, Path("/test/SKILL.md")
-        )
+        SkillMetadata.from_frontmatter({"description": "test"}, Path("/test/SKILL.md"))
 
     with pytest.raises(ValueError, match="missing required field: description"):
-        SkillMetadata.from_frontmatter(
-            {"name": "test"}, Path("/test/SKILL.md")
-        )
+        SkillMetadata.from_frontmatter({"name": "test"}, Path("/test/SKILL.md"))
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -416,7 +414,18 @@ def test_skill_registry_system_prompt_generation(skill_registry):
     assert "## Available Skills" in prompt_section
     assert "**test-skill**" in prompt_section
     assert "**resource-skill**" in prompt_section
-    assert "Skill(name=" in prompt_section
+    assert "Do NOT invoke the Skill tool" in prompt_section
+    assert "Skill(name=" not in prompt_section
+
+
+def test_skill_registry_user_help_generation(skill_registry):
+    """Test generating user-facing skill help section."""
+    help_text = skill_registry.generate_user_help_section()
+
+    assert "Available skills" in help_text
+    assert "test-skill" in help_text
+    assert "resource-skill" in help_text
+    assert "Invoke a skill with" in help_text
 
 
 def test_skill_registry_empty():
@@ -479,7 +488,7 @@ def test_skill_registry_reload(skill_registry):
 @pytest.mark.asyncio
 async def test_skill_tool_execute_success(skill_tool, oxy_request):
     """Test successful skill invocation."""
-    oxy_request.arguments = {"name": "test-skill"}
+    oxy_request.arguments = {"name": "test-skill", "invocation_source": "user"}
 
     response = await skill_tool._execute(oxy_request)
 
@@ -501,7 +510,7 @@ async def test_skill_tool_execute_missing_name(skill_tool, oxy_request):
 @pytest.mark.asyncio
 async def test_skill_tool_execute_nonexistent_skill(skill_tool, oxy_request):
     """Test invoking a skill that doesn't exist."""
-    oxy_request.arguments = {"name": "nonexistent-skill"}
+    oxy_request.arguments = {"name": "nonexistent-skill", "invocation_source": "user"}
 
     response = await skill_tool._execute(oxy_request)
 
@@ -510,9 +519,7 @@ async def test_skill_tool_execute_nonexistent_skill(skill_tool, oxy_request):
 
 
 @pytest.mark.asyncio
-async def test_skill_tool_execute_with_environment_mods(
-    temp_skill_dir, oxy_request
-):
+async def test_skill_tool_execute_with_environment_mods(temp_skill_dir, oxy_request):
     """Test skill with environment modifications."""
     # Create a skill with environment mods
     skill_content = """---
@@ -521,6 +528,8 @@ description: A skill with environment mods
 allowed-tools:
   - Read
   - Grep
+
+model: claude-3-opus
 
 timeout: 120
 ---
@@ -536,7 +545,7 @@ Use only Read and Grep tools.
     registry = SkillRegistry(skill_dirs=[str(temp_skill_dir)])
     tool = SkillTool(name="Skill", desc="Test", skill_registry=registry)
 
-    oxy_request.arguments = {"name": "env-test-skill"}
+    oxy_request.arguments = {"name": "env-test-skill", "invocation_source": "user"}
     response = await tool._execute(oxy_request)
 
     assert response.state == OxyState.COMPLETED
@@ -563,6 +572,8 @@ def test_skill_tool_input_schema():
 
     assert "name" in tool.input_schema["properties"]
     assert tool.input_schema["properties"]["name"]["type"] == "string"
+    assert "arguments" in tool.input_schema["properties"]
+    assert "invocation_source" in tool.input_schema["properties"]
     assert "name" in tool.input_schema["required"]
 
 
@@ -615,7 +626,7 @@ async def test_tool_with_registry_from_request(temp_skill_dir, oxy_request):
 
     # Tool without registry set should use MAS registry
     tool = SkillTool(name="Skill", desc="Test")
-    oxy_request.arguments = {"name": "test-skill"}
+    oxy_request.arguments = {"name": "test-skill", "invocation_source": "user"}
 
     response = await tool._execute(oxy_request)
 

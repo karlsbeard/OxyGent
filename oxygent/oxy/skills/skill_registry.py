@@ -35,10 +35,13 @@ class SkillRegistry:
         _content_cache: Cache for loaded full skill content.
     """
 
+    # Discovery precedence: later entries override earlier ones on name collision.
     DEFAULT_SKILL_DIRS = [
-        ".oxygent/skills/",           # Project-local skills
-        "~/.oxygent/skills/",         # User-level skills
-        "oxygent/preset_skills/",     # Built-in preset skills
+        "oxygent/preset_skills/",  # Built-in preset skills (lowest priority)
+        "~/.oxygent/skills/",  # User-level OxyGent skills
+        ".oxygent/skills/",  # Project-local OxyGent skills
+        "~/.claude/skills/",  # User-level Claude skills
+        ".claude/skills/",  # Project-local Claude skills (highest priority)
     ]
 
     def __init__(
@@ -93,8 +96,10 @@ class SkillRegistry:
                     if metadata.name in self.metadata_index:
                         existing_path = self.metadata_index[metadata.name].skill_path
                         logger.warning(
-                            f"Duplicate skill name '{metadata.name}'. "
-                            f"Using {skill_file}, ignoring {existing_path}"
+                            "Duplicate skill name '%s'. Using %s, overriding %s",
+                            metadata.name,
+                            skill_file,
+                            existing_path,
                         )
                     self.metadata_index[metadata.name] = metadata
                     discovered.append(metadata.name)
@@ -128,9 +133,7 @@ class SkillRegistry:
                         break
                     frontmatter_lines.append(line)
                 else:
-                    logger.warning(
-                        f"Invalid SKILL.md frontmatter format: {skill_path}"
-                    )
+                    logger.warning(f"Invalid SKILL.md frontmatter format: {skill_path}")
                     return None
 
             try:
@@ -290,21 +293,55 @@ class SkillRegistry:
         lines = [
             "## Available Skills",
             "",
-            "You have access to the following skills. When a user request",
-            "matches a skill's description, invoke it using the Skill tool.",
+            "Skills are loaded with progressive disclosure:",
+            "- Metadata (name + description) is always available",
+            "- Full SKILL.md content is loaded only when a skill is activated",
+            "",
+            "Do NOT invoke the Skill tool unless the user explicitly requests it.",
+            "(This system uses a selector-based activator.)",
             "",
         ]
 
         for metadata in self.metadata_index.values():
+            if getattr(metadata, "disable_model_invocation", False):
+                continue
             lines.append(metadata.to_prompt_entry())
 
-        lines.extend([
-            "",
-            "To use a skill: Call the Skill tool with the skill name.",
-            "Example: Skill(name=\"code-reviewer\")",
-            "",
-        ])
+        return "\n".join(lines)
 
+    def generate_user_help_section(self) -> str:
+        """Generate a user-facing skill list.
+
+        This is intended for answering questions like "what skills do you have?"
+        without loading full SKILL.md content.
+        """
+        if not self.metadata_index:
+            return ""
+
+        lines: list[str] = [
+            "Available skills (metadata only):",
+            "",
+        ]
+
+        for metadata in sorted(self.metadata_index.values(), key=lambda m: m.name):
+            flags: list[str] = []
+            if getattr(metadata, "disable_model_invocation", False):
+                flags.append("manual-only")
+            if getattr(metadata, "user_invocable", True) is False:
+                flags.append("not-user-invocable")
+            suffix = f" ({', '.join(flags)})" if flags else ""
+            lines.append(f"- {metadata.name}: {metadata.description}{suffix}")
+
+            arg_hint = getattr(metadata, "argument_hint", None)
+            if isinstance(arg_hint, str) and arg_hint.strip():
+                lines.append(f"  args: {arg_hint.strip()}")
+
+        lines.extend(
+            [
+                "",
+                "Invoke a skill with: /<skill-name> [arguments]",
+            ]
+        )
         return "\n".join(lines)
 
     def list_skills(self) -> List[SkillMetadata]:

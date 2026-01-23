@@ -79,48 +79,14 @@ class ReActAgent(LocalAgent):
 
     trust_mode: bool = Field(False, description="Enable trust mode for direct results")
 
-    func_parse_llm_response: Optional[Callable[[str, OxyRequest], LLMResponse]] = Field(
-        None, exclude=True, description="Function to parse LLM output"
-    )
+    func_parse_llm_response: Optional[
+        Callable[[str, Optional[OxyRequest]], LLMResponse]
+    ] = Field(None, exclude=True, description="Function to parse LLM output")
 
-    func_reflexion: Optional[Callable[[str, OxyRequest], str]] = Field(
-        None, exclude=True, description="Function to perform reflexion on responses"
-    )
-
-    # Skills support
-    enable_skills: bool = Field(
-        True,
-        description="Whether to enable skill support for this agent",
-    )
-    active_skill: Optional[str] = Field(
-        None,
-        description="Name of the currently active skill",
-        exclude=True,
-    )
-    skill_allowed_tools: Optional[list] = Field(
-        None,
-        description="Tools allowed by the active skill",
-        exclude=True,
-    )
-    pending_skill_context: Optional[str] = Field(
-        None,
-        description="One-shot skill context for the next LLM call",
-        exclude=True,
-    )
-    pending_skill_model: Optional[str] = Field(
-        None,
-        description="One-shot model override from the active skill",
-        exclude=True,
-    )
-    pending_skill_timeout: Optional[float] = Field(
-        None,
-        description="One-shot timeout override from the active skill",
-        exclude=True,
-    )
-    skill_original_tools_description: Optional[str] = Field(
-        None,
-        description="Cached tools description before skill activation",
-        exclude=True,
+    func_reflexion: Optional[Callable[[str, Optional[OxyRequest]], Optional[str]]] = (
+        Field(
+            None, exclude=True, description="Function to perform reflexion on responses"
+        )
     )
 
     def __init__(self, **kwargs):
@@ -139,9 +105,13 @@ class ReActAgent(LocalAgent):
 
         # Add retrieve_tools if vector search is conf igured
         if Config.get_vearch_config():
+            if self.tools is None:
+                self.tools = []
             self.tools.append("retrieve_tools")
 
-    def _default_reflexion(self, response: str, oxy_request: OxyRequest) -> str:
+    def _default_reflexion(
+        self, response: str, oxy_request: Optional[OxyRequest]
+    ) -> Optional[str]:
         """Default reflexion function that checks if response is empty or invalid.
 
         Args:
@@ -156,158 +126,8 @@ class ReActAgent(LocalAgent):
             return "The response should not be empty. Please provide a more detailed and helpful answer."
         return None
 
-    def _build_instruction(self, arguments) -> str:
-        """Build instruction prompt with skill catalog if skills are enabled.
-
-        Args:
-            arguments: Dictionary containing variable values for substitution.
-
-        Returns:
-            str: The formatted instruction string with variables substituted
-                and skill catalog appended if enabled.
-        """
-        # Get base instruction from parent class
-        base_instruction = super()._build_instruction(arguments)
-
-        # Append skill catalog if skills are enabled and registry exists
-        if (
-            self.enable_skills
-            and self.mas
-            and hasattr(self.mas, "skill_registry")
-            and self.mas.skill_registry
-        ):
-            skill_section = self.mas.skill_registry.generate_system_prompt_section()
-            if skill_section:
-                return f"{base_instruction}\n\n{skill_section}"
-
-        return base_instruction
-
-    def _get_permitted_tools_with_skill_override(self) -> list:
-        """Get currently permitted tools, respecting skill-based overrides.
-
-        If an active skill has restricted tool access, return only those tools.
-        Otherwise return the agent's full permitted tool list.
-
-        Returns:
-            list: List of permitted tool names.
-        """
-        if self.skill_allowed_tools:
-            return self.skill_allowed_tools
-        return self.permitted_tool_name_list
-
-    def _build_tools_description_from_list(
-        self, oxy_request: OxyRequest, tool_names: list
-    ) -> str:
-        """Build a tools description string from an explicit tool list."""
-        tool_descs = []
-        for tool_name in tool_names:
-            if not oxy_request.has_oxy(tool_name):
-                logger.warning(f"Skill allowed tool not found: {tool_name}")
-                continue
-            tool_descs.append(oxy_request.get_oxy(tool_name).desc_for_llm)
-        return "\n\n".join(tool_descs)
-
-    def _handle_skill_response(
-        self,
-        tool_name: str,
-        oxy_response: OxyResponse,
-        oxy_request: OxyRequest,
-        react_memory: Memory,
-        temp_memory: Memory,
-    ) -> bool:
-        """Handle response from Skill tool invocation.
-
-        When a skill is invoked:
-        1. Stage one-shot skill context for the next LLM call
-        2. Apply soft environment modifications (tool list, model, timeout)
-        3. Return True to indicate skill was activated
-
-        Args:
-            tool_name: Name of the tool that was called.
-            oxy_response: Response from the tool execution.
-            oxy_request: Current request context.
-            react_memory: Current ReAct memory for updates.
-            temp_memory: Current temporary memory for updates.
-
-        Returns:
-            bool: True if this was a skill activation, False otherwise.
-        """
-        # Check if this is a skill invocation
-        if (
-            tool_name != "Skill"
-            or oxy_response.state is not OxyState.COMPLETED
-            or not oxy_response.extra
-        ):
-            return False
-
-        if oxy_response.extra.get("context_type") != "skill_injection":
-            return False
-
-        skill_name = oxy_response.extra.get("skill_name")
-        if not skill_name:
-            return False
-
-        # Update active skill tracking
-        self.active_skill = skill_name
-
-        # Stage one-shot skill context for next LLM call
-        self.pending_skill_context = oxy_response.output
-
-        # Apply environment modifications
-        env_mods = oxy_response.extra.get("environment_modifications", {})
-        if "allowed_tools" in env_mods:
-            self.skill_allowed_tools = env_mods["allowed_tools"]
-            # Soft restriction: update prompt tool list only. TODO: enforce at call-time.
-            if self.skill_original_tools_description is None:
-                self.skill_original_tools_description = oxy_request.arguments.get(
-                    self.tools_placeholder
-                )
-            oxy_request.arguments[self.tools_placeholder] = (
-                self._build_tools_description_from_list(
-                    oxy_request, self.skill_allowed_tools
-                )
-            )
-            logger.info(
-                f"Skill '{skill_name}' restricted tools to: {env_mods['allowed_tools']}",
-                extra={
-                    "trace_id": oxy_request.current_trace_id,
-                    "node_id": oxy_request.node_id,
-                },
-            )
-        if "model" in env_mods:
-            self.pending_skill_model = env_mods["model"]
-        if "timeout" in env_mods:
-            self.pending_skill_timeout = env_mods["timeout"]
-
-        logger.info(
-            f"Skill activated: {skill_name}",
-            extra={
-                "trace_id": oxy_request.current_trace_id,
-                "node_id": oxy_request.node_id,
-            },
-        )
-
-        return True
-
-    def _reset_skill_state(self, oxy_request: Optional[OxyRequest] = None):
-        """Reset the active skill state.
-
-        Called when the agent completes its task or when the skill context
-        should no longer apply.
-        """
-        if oxy_request and self.skill_original_tools_description is not None:
-            oxy_request.arguments[self.tools_placeholder] = (
-                self.skill_original_tools_description
-            )
-        self.active_skill = None
-        self.skill_allowed_tools = None
-        self.pending_skill_context = None
-        self.pending_skill_model = None
-        self.pending_skill_timeout = None
-        self.skill_original_tools_description = None
-
     async def _get_history(
-        self, oxy_request: OxyRequest, is_get_user_master_session=False
+        self, oxy_request: OxyRequest, is_get_user_master_session: bool = False
     ) -> Memory:
         """Retrieve conversation history with intelligent memory management.
 
@@ -324,6 +144,8 @@ class ReActAgent(LocalAgent):
             Memory: Processed conversation history optimized for context.
         """
         short_memory = Memory()
+        if not self.mas or not getattr(self.mas, "es_client", None):
+            return short_memory
         if is_get_user_master_session:
             session_name = "__".join(oxy_request.call_stack[:2])
         else:
@@ -419,7 +241,7 @@ class ReActAgent(LocalAgent):
         return short_memory
 
     def _parse_llm_response(
-        self, ori_response: str, oxy_request: OxyRequest = None
+        self, ori_response: str, oxy_request: Optional[OxyRequest] = None
     ) -> LLMResponse:
         """Parse LLM response to determine next action.
 
@@ -460,7 +282,11 @@ class ReActAgent(LocalAgent):
                     ori_response=ori_response,
                 )
             else:
-                reflection_msg = self.func_reflexion(ori_response, oxy_request)
+                reflection_msg = (
+                    self.func_reflexion(ori_response, oxy_request)
+                    if self.func_reflexion
+                    else None
+                )
                 if reflection_msg:
                     return LLMResponse(
                         state=LLMState.ERROR_PARSE,
@@ -475,7 +301,7 @@ class ReActAgent(LocalAgent):
         except Exception as e:
             logger.warning(e)
             return LLMResponse(
-                state=LLMState.ERROR_PARSE, output=e, ori_response=ori_response
+                state=LLMState.ERROR_PARSE, output=str(e), ori_response=ori_response
             )
 
     async def _execute(self, oxy_request: OxyRequest) -> OxyResponse:
@@ -498,11 +324,6 @@ class ReActAgent(LocalAgent):
             temp_memory.add_message(
                 Message.system_message(self._build_instruction(oxy_request.arguments))
             )
-            if self.pending_skill_context:
-                temp_memory.add_message(
-                    Message.system_message(self.pending_skill_context)
-                )
-                self.pending_skill_context = None
             temp_memory.add_messages(
                 Message.dict_list_to_messages(oxy_request.get_short_memory())
             )
@@ -512,38 +333,24 @@ class ReActAgent(LocalAgent):
 
             full_memory = temp_memory.to_dict_list()
             llm_arguments = {"messages": full_memory}
-            if self.pending_skill_model:
-                llm_arguments["model"] = self.pending_skill_model
-
-            llm = None
-            original_timeout = None
-            if self.pending_skill_timeout is not None:
-                llm = oxy_request.get_oxy(self.llm_model)
-                original_timeout = llm.timeout
-                llm.timeout = self.pending_skill_timeout
-
-            try:
-                oxy_response = await oxy_request.call(
-                    callee=self.llm_model,
-                    arguments=llm_arguments,
-                )
-            finally:
-                if original_timeout is not None:
-                    llm.timeout = original_timeout
-                self.pending_skill_model = None
-                self.pending_skill_timeout = None
-            oxy_request.arguments["full_memory"] = full_memory
-            llm_response = self.func_parse_llm_response(
-                oxy_response.output, oxy_request
+            llm_params = oxy_request.arguments.get("llm_params", {})
+            if isinstance(llm_params, dict) and llm_params:
+                llm_arguments.update(llm_params)
+            oxy_response = await oxy_request.call(
+                callee=self.llm_model,
+                arguments=llm_arguments,
             )
+            oxy_request.arguments["full_memory"] = full_memory
+            parse_fn = self.func_parse_llm_response or self._parse_llm_response
+            llm_response = parse_fn(oxy_response.output, oxy_request)
 
             # Execute based on LLM decision
             if llm_response.state is LLMState.ANSWER:
-                self._reset_skill_state(oxy_request)
                 return OxyResponse(
                     state=OxyState.COMPLETED,
                     output=llm_response.output,
                     extra={"react_memory": react_memory.to_dict_list()},
+                    oxy_request=oxy_request,
                 )
             elif llm_response.state is LLMState.TOOL_CALL:
                 # Execute tool calls (possibly multiple)
@@ -568,22 +375,11 @@ class ReActAgent(LocalAgent):
                     ]
                 )
 
-                # observation_list = []
                 observation = Observation()
-                skill_was_activated = False
-
                 for tool_call_dict, oxy_response in zip(
                     tool_call_dict_list, oxy_responses
                 ):
                     tool_name = tool_call_dict["tool_name"]
-
-                    # Handle skill activation specially
-                    if self._handle_skill_response(
-                        tool_name, oxy_response, oxy_request, react_memory, temp_memory
-                    ):
-                        skill_was_activated = True
-                        # Don't add skill activation to observation - it's already in temp_memory
-                        continue
 
                     observation.add_exec_result(
                         ExecResult(
@@ -592,17 +388,6 @@ class ReActAgent(LocalAgent):
                         )
                     )
 
-                # If a skill was activated, continue to next iteration with enriched context
-                # The skill context will be injected into the next LLM call
-                if skill_was_activated:
-                    # Add LLM's response that invoked the skill
-                    react_memory.add_message(
-                        Message.assistant_message(llm_response.ori_response)
-                    )
-                    # Don't add observation since skill doesn't produce traditional output
-                    # Continue to next iteration where LLM will see the skill context
-                    continue
-
                 # When trust_mode == 1, write in short_memory，return observation
                 if isinstance(llm_response.output, dict):
                     if self.trust_mode or (
@@ -610,11 +395,11 @@ class ReActAgent(LocalAgent):
                         and llm_response.output["trust_mode"] == 1
                     ):
                         result_payload = observation.to_str()
-                        self._reset_skill_state(oxy_request)
                         return OxyResponse(
                             state=OxyState.COMPLETED,
                             output=result_payload,
                             extra={"react_memory": react_memory.to_dict_list()},
+                            oxy_request=oxy_request,
                         )
 
                 # Add to ReAct memory for next iteration
@@ -634,7 +419,7 @@ class ReActAgent(LocalAgent):
                 react_memory.add_message(
                     Message.assistant_message(llm_response.ori_response)
                 )
-                react_memory.add_message(Message.user_message(llm_response.output))
+                react_memory.add_message(Message.user_message(str(llm_response.output)))
 
         # Fallback mechanism when max rounds reached
         # Extract tool call results for final summary
@@ -659,12 +444,14 @@ class ReActAgent(LocalAgent):
         ]
         oxy_response = await oxy_request.call(
             callee=self.llm_model,
-            arguments={"messages": [msg.to_dict() for msg in temp_messages]},
+            arguments={
+                "messages": [msg.to_dict() for msg in temp_messages],
+                **(oxy_request.arguments.get("llm_params", {}) or {}),
+            },
         )
-
-        self._reset_skill_state(oxy_request)
         return OxyResponse(
             state=OxyState.COMPLETED,
             output=oxy_response.output,
             extra={"react_memory": react_memory.to_dict_list()},
+            oxy_request=oxy_request,
         )
