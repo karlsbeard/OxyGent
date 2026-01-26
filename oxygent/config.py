@@ -56,6 +56,8 @@ class Config:
             "temperature": 0.1,
             "max_tokens": 4096,
             "top_p": 1,
+            "semaphore": 16,
+            "timeout": 300,
         },
         "cache": {
             "save_dir": "./cache_dir",
@@ -93,6 +95,12 @@ class Config:
             "log_level": "INFO",
             "workers": 1,
         },
+        "oxy": {
+            "semaphore": 1024,
+            "timeout": 3600,
+            "retries": 2,
+            "delay": 1.0,
+        },
         "agent": {
             "prompt": "",
             "llm_model": "default_llm",
@@ -106,6 +114,11 @@ class Config:
         "tool": {
             "mcp_is_keep_alive": True,
             "is_concurrent_init": True,
+            "semaphore": 1024,
+            "timeout": 60,
+        },
+        "live_prompt": {
+            "es_polling_interval": 2,  # ES polling interval in seconds for version sync
         },
     }
 
@@ -282,8 +295,28 @@ class Config:
         return cls.set_module_config("llm", llm_config)
 
     @classmethod
-    def get_llm_config(cls):
-        return cls.get_module_config("llm")
+    def get_llm_config(cls, exclude=None):
+        if exclude is None:
+            exclude = []
+        return {
+            k: v for k, v in cls.get_module_config("llm").items() if k not in exclude
+        }
+
+    @classmethod
+    def set_llm_semaphore(cls, semaphore):
+        cls.set_module_config("llm", "semaphore", semaphore)
+
+    @classmethod
+    def get_llm_semaphore(cls):
+        return cls.get_module_config("llm", "semaphore")
+
+    @classmethod
+    def set_llm_timeout(cls, timeout):
+        cls.set_module_config("llm", "timeout", timeout)
+
+    @classmethod
+    def get_llm_timeout(cls):
+        return cls.get_module_config("llm", "timeout")
 
     """ cache """
 
@@ -546,6 +579,48 @@ class Config:
     def get_server_workers(cls):
         return cls.get_module_config("server", "workers")
 
+    """ oxy """
+
+    @classmethod
+    def set_oxy_config(cls, oxy_config):
+        cls.set_module_config("oxy", oxy_config)
+
+    @classmethod
+    def get_oxy_config(cls):
+        return cls.get_module_config("oxy")
+
+    @classmethod
+    def set_oxy_semaphore(cls, semaphore):
+        cls.set_module_config("oxy", "semaphore", semaphore)
+
+    @classmethod
+    def get_oxy_semaphore(cls):
+        return cls.get_module_config("oxy", "semaphore")
+
+    @classmethod
+    def set_oxy_timeout(cls, timeout):
+        cls.set_module_config("oxy", "timeout", timeout)
+
+    @classmethod
+    def get_oxy_timeout(cls):
+        return cls.get_module_config("oxy", "timeout")
+
+    @classmethod
+    def set_oxy_retries(cls, retries):
+        cls.set_module_config("oxy", "retries", retries)
+
+    @classmethod
+    def get_oxy_retries(cls):
+        return cls.get_module_config("oxy", "retries")
+
+    @classmethod
+    def set_oxy_delay(cls, delay):
+        cls.set_module_config("oxy", "delay", delay)
+
+    @classmethod
+    def get_oxy_delay(cls):
+        return cls.get_module_config("oxy", "delay")
+
     """ agent """
 
     @classmethod
@@ -621,3 +696,37 @@ class Config:
     @classmethod
     def get_tool_is_concurrent_init(cls):
         return cls.get_module_config("tool", "is_concurrent_init")
+
+    @classmethod
+    def set_tool_semaphore(cls, semaphore):
+        cls.set_module_config("tool", "semaphore", semaphore)
+
+    @classmethod
+    def get_tool_semaphore(cls):
+        return cls.get_module_config("tool", "semaphore")
+
+    @classmethod
+    def set_tool_timeout(cls, timeout):
+        cls.set_module_config("tool", "timeout", timeout)
+
+    @classmethod
+    def get_tool_timeout(cls):
+        return cls.get_module_config("tool", "timeout")
+
+    """ live_prompt """
+
+    @classmethod
+    def set_live_prompt_config(cls, live_prompt_config):
+        cls.set_module_config("live_prompt", live_prompt_config)
+
+    @classmethod
+    def get_live_prompt_config(cls):
+        return cls.get_module_config("live_prompt")
+
+    @classmethod
+    def set_live_prompt_es_polling_interval(cls, es_polling_interval):
+        cls.set_module_config("live_prompt", "es_polling_interval", es_polling_interval)
+
+    @classmethod
+    def get_live_prompt_es_polling_interval(cls):
+        return cls.get_module_config("live_prompt", "es_polling_interval")
