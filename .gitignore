@@ -243,5 +243,3 @@ cache_dir/
 local_file/
 deployment/
 
-# Local dev skills (do not commit)
-.oxygent/skills/agent-browser/
