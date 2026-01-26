@@ -54,8 +54,6 @@ Create a tool when:
 ---
 name: skill-name
 description: A clear, concise description
-version: "1.0.0"
-author: Your Name
 ---
 
 # Skill Title
@@ -78,29 +76,21 @@ author: Your Name
 - Must be lowercase
 - Use hyphens for multi-word names
 - Must match directory name
-- Example: `code-reviewer`, `web-researcher`
+- Example: `skill-creator`
 
 **`description`** (string): Semantic matching text
 - 10-200 characters recommended
 - Describes what the skill does
 - Used by LLM to decide when to invoke
-- Example: "Review code for security vulnerabilities and best practices"
+- Example: "Create a new skill skeleton and SKILL.md"
 
 #### Optional Fields
-
-**`version`** (string): Semantic version
-- Follow semver (MAJOR.MINOR.PATCH)
-- Example: `"1.0.0"`
-
-**`author`** (string): Author attribution
-- Your name or organization
-- Example: `"OxyGent Team"`
 
 **`allowed-tools`** (list | string): Tool restriction
 - List of tool names the agent can use
 - Single string also accepted
 - Omit to allow all tools
-- Example: `["Read", "Grep", "Glob"]`
+- Example: `["file_tools", "HttpTool"]`
 
 **`model`** (string): Preferred LLM model
 - Specify model for best results
@@ -152,7 +142,7 @@ author: Your Name
 
 #### Analysis Skills
 
-For skills that analyze content (code-reviewer, summarizer):
+For skills that analyze content:
 
 1. **Define the analysis framework**
    - What categories to examine
@@ -191,7 +181,7 @@ Example:
 
 #### Creative Skills
 
-For skills that generate content (technical-writer):
+For skills that generate content:
 
 1. **Understand requirements first**
    - Ask clarifying questions
@@ -225,7 +215,7 @@ Example:
 
 #### Research Skills
 
-For skills that gather information (web-researcher):
+For skills that gather information from a provided URL:
 
 1. **Define search strategy**
    - Where to look first
@@ -267,8 +257,8 @@ Use `allowed-tools` to restrict what tools the agent can use:
 ```yaml
 ---
 allowed-tools:
-  - Read
-  - Grep
+  - file_tools
+  - HttpTool
 ---
 ```
 
@@ -444,7 +434,7 @@ async def test_skill():
 
     # Test the skill
     response = await agent.arun(
-        "Use the code-reviewer skill to review auth.py"
+        "/skill-creator Create a new skill named my-skill (local .oxygent/skills/)"
     )
     print(response.output)
 ```
@@ -476,8 +466,6 @@ async def test_skill():
 ---
 name: minimal-skill
 description: A minimal skill template
-version: "1.0.0"
-author: Your Name
 ---
 
 # Minimal Skill
@@ -503,12 +491,9 @@ This skill does one thing well.
 ---
 name: advanced-skill
 description: A comprehensive skill with all features
-version: "1.0.0"
-author: Your Name
 
 allowed-tools:
-  - Read
-  - Write
+  - file_tools
   - HttpTool
 
 
@@ -558,9 +543,9 @@ See examples.md for detailed usage examples.
 **Solution:** [How to resolve]
 ```
 
-### Complete Example: Code Reviewer
+### Complete Example: Skill Creator
 
-See `code-reviewer/SKILL.md` for a complete, production-ready skill example.
+See `skill-creator/SKILL.md` for a complete, production-ready skill example.
 
 ---
 
@@ -574,7 +559,6 @@ See `code-reviewer/SKILL.md` for a complete, production-ready skill example.
 - Handle edge cases
 - Keep descriptions concise (10-200 chars)
 - Use lowercase, hyphenated names
-- Include version numbers
 - Test thoroughly
 
 ❌ **DON'T:**

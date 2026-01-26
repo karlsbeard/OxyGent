@@ -44,6 +44,9 @@ class SkillRegistry:
         ".claude/skills/",  # Project-local Claude skills (highest priority)
     ]
 
+    # Directories inside a skill that must not be treated as separate skills.
+    _NON_SKILL_SUBDIRS = {"scripts", "references", "assets"}
+
     def __init__(
         self,
         skill_dirs: Optional[List[str]] = None,
@@ -90,6 +93,21 @@ class SkillRegistry:
                 continue
 
             for skill_file in path.rglob("SKILL.md"):
+                # Support the standard "skill folder" layout where a skill may contain
+                # scripts/references/assets. Those subdirectories may themselves contain
+                # a file named SKILL.md (e.g., in templates), which must not be discovered
+                # as an independent skill.
+                try:
+                    rel_parts = skill_file.relative_to(path).parts
+                except Exception:
+                    rel_parts = skill_file.parts
+
+                # rel_parts like: (<skill-name>, 'SKILL.md') or
+                # (<group>, <skill-name>, 'SKILL.md') or
+                # (<skill-name>, 'assets', ..., 'SKILL.md')
+                if any(p in self._NON_SKILL_SUBDIRS for p in rel_parts[1:-1]):
+                    continue
+
                 metadata = self._load_metadata_only(skill_file)
                 if metadata:
                     # Check for duplicate skill names
@@ -258,6 +276,18 @@ class SkillRegistry:
                         )
                         continue
                     if resource_file.exists():
+                        # Support directory resources (e.g. "references/") by
+                        # recursively loading text files under the directory.
+                        if resource_file.is_dir():
+                            loaded = self._load_resource_directory(
+                                base_dir=skill_dir,
+                                target_dir=resource_file,
+                                max_files=50,
+                                max_bytes=200_000,
+                            )
+                            resources.update(loaded)
+                            continue
+
                         try:
                             resources[resource_path] = resource_file.read_text(
                                 encoding="utf-8"
@@ -276,6 +306,52 @@ class SkillRegistry:
         except Exception as e:
             logger.error(f"Error loading skill content from {skill_path}: {e}")
             return None
+
+    def _load_resource_directory(
+        self,
+        base_dir: Path,
+        target_dir: Path,
+        max_files: int,
+        max_bytes: int,
+    ) -> Dict[str, str]:
+        """Recursively load text resources under a directory.
+
+        Returned keys are POSIX-style relative paths from base_dir.
+        """
+        loaded: Dict[str, str] = {}
+        total_bytes = 0
+        file_count = 0
+
+        # Prefer stable ordering for deterministic prompts.
+        for p in sorted(target_dir.rglob("*")):
+            if file_count >= max_files:
+                break
+            if not p.is_file():
+                continue
+
+            # Skip common binary extensions by default.
+            if p.suffix.lower() in {".png", ".jpg", ".jpeg", ".gif", ".pdf", ".zip"}:
+                continue
+
+            try:
+                rel = p.resolve().relative_to(base_dir.resolve())
+            except Exception:
+                continue
+
+            key = rel.as_posix()
+            try:
+                text = p.read_text(encoding="utf-8")
+            except Exception:
+                continue
+
+            total_bytes += len(text.encode("utf-8", errors="ignore"))
+            if total_bytes > max_bytes:
+                break
+
+            loaded[key] = text
+            file_count += 1
+
+        return loaded
 
     def generate_system_prompt_section(self) -> str:
         """Generate the skill catalog section for the agent's system prompt.

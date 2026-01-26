@@ -82,6 +82,38 @@ def temp_skill_dir(sample_skill_content, sample_skill_with_resources):
         )
         (resource_skill_dir / "template.txt").write_text("Template content here")
 
+        # Nested SKILL.md under a standard resource directory should NOT be discovered
+        nested_skill_dir = resource_skill_dir / "assets" / "nested"
+        nested_skill_dir.mkdir(parents=True)
+        (nested_skill_dir / "SKILL.md").write_text(
+            """---
+name: nested-skill
+description: This should not be discovered as a skill
+---
+
+# Nested
+"""
+        )
+
+        # Create skill with directory resources
+        dir_resource_skill_dir = skill_dir / "dir-resource-skill"
+        dir_resource_skill_dir.mkdir()
+        (dir_resource_skill_dir / "SKILL.md").write_text(
+            """---
+name: dir-resource-skill
+description: A test skill with directory resources
+resources:
+  - references/
+---
+
+# Dir Resource Skill
+"""
+        )
+        refs = dir_resource_skill_dir / "references"
+        refs.mkdir()
+        (refs / "workflows.md").write_text("# Workflows\n\nA")
+        (refs / "output-patterns.md").write_text("# Output Patterns\n\nB")
+
         yield skill_dir
 
 
@@ -134,13 +166,13 @@ def test_skill_metadata_creation():
 def test_skill_metadata_to_prompt_entry():
     """Test formatting metadata for system prompt."""
     metadata = SkillMetadata(
-        name="code-reviewer",
-        description="Review code for quality and security",
+        name="example-skill",
+        description="An example skill for prompt formatting",
         skill_path=Path("/test/SKILL.md"),
     )
 
     entry = metadata.to_prompt_entry()
-    assert entry == "- **code-reviewer**: Review code for quality and security"
+    assert entry == "- **example-skill**: An example skill for prompt formatting"
 
 
 def test_skill_metadata_from_frontmatter():
@@ -308,9 +340,10 @@ def test_skill_registry_discovery(temp_skill_dir):
 
     skills = registry.discover_all()
 
-    assert len(skills) == 2
+    assert len(skills) == 3
     assert "test-skill" in skills
     assert "resource-skill" in skills
+    assert "dir-resource-skill" in skills
 
 
 def test_skill_registry_metadata_only(temp_skill_dir):
@@ -351,6 +384,16 @@ def test_skill_registry_load_content_with_resources(skill_registry):
     assert "template.txt" in content.resources
     assert "# Examples" in content.resources["examples.md"]
     assert "Template content" in content.resources["template.txt"]
+
+
+def test_skill_registry_load_content_with_directory_resources(skill_registry):
+    """Test loading skill with directory resources."""
+    content = skill_registry.load_full_content("dir-resource-skill")
+
+    assert content is not None
+    assert "references/workflows.md" in content.resources
+    assert "references/output-patterns.md" in content.resources
+    assert "# Workflows" in content.resources["references/workflows.md"]
 
 
 def test_skill_registry_resources_string(temp_skill_dir):
@@ -414,6 +457,7 @@ def test_skill_registry_system_prompt_generation(skill_registry):
     assert "## Available Skills" in prompt_section
     assert "**test-skill**" in prompt_section
     assert "**resource-skill**" in prompt_section
+    assert "**dir-resource-skill**" in prompt_section
     assert "Do NOT invoke the Skill tool" in prompt_section
     assert "Skill(name=" not in prompt_section
 
@@ -425,6 +469,7 @@ def test_skill_registry_user_help_generation(skill_registry):
     assert "Available skills" in help_text
     assert "test-skill" in help_text
     assert "resource-skill" in help_text
+    assert "dir-resource-skill" in help_text
     assert "Invoke a skill with" in help_text
 
 
@@ -441,10 +486,11 @@ def test_skill_registry_list_skills(skill_registry):
     """Test listing all skills."""
     skills = skill_registry.list_skills()
 
-    assert len(skills) == 2
+    assert len(skills) == 3
     skill_names = {s.name for s in skills}
     assert "test-skill" in skill_names
     assert "resource-skill" in skill_names
+    assert "dir-resource-skill" in skill_names
 
 
 def test_skill_registry_has_skill(skill_registry):
@@ -468,7 +514,7 @@ def test_skill_registry_clear_cache(skill_registry):
 def test_skill_registry_reload(skill_registry):
     """Test reloading skills."""
     # After initial discovery
-    assert len(skill_registry) == 2
+    assert len(skill_registry) == 3
 
     # Modify cache
     skill_registry.load_full_content("test-skill")
@@ -476,7 +522,7 @@ def test_skill_registry_reload(skill_registry):
 
     # Reload
     skill_registry.reload()
-    assert len(skill_registry.metadata_index) == 2
+    assert len(skill_registry.metadata_index) == 3
     assert len(skill_registry._content_cache) == 0
 
 

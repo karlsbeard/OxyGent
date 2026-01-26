@@ -20,7 +20,7 @@ class SkillValidator:
     """
 
     REQUIRED_FIELDS = ["name", "description"]
-    RECOMMENDED_FIELDS = ["version", "author"]
+    RECOMMENDED_FIELDS: List[str] = []
 
     def __init__(self, skill_path: Path):
         """Initialize validator for a skill.
@@ -130,9 +130,13 @@ class SkillValidator:
             return
 
         if len(description) < 10:
-            self.warnings.append("Description is too short (min 10 characters recommended)")
+            self.warnings.append(
+                "Description is too short (min 10 characters recommended)"
+            )
         if len(description) > 200:
-            self.warnings.append("Description is too long (max 200 characters recommended)")
+            self.warnings.append(
+                "Description is too long (max 200 characters recommended)"
+            )
 
     def _validate_allowed_tools(self):
         """Validate the allowed-tools field."""
@@ -173,9 +177,7 @@ class SkillValidator:
                 )
             self.frontmatter["resources"] = valid
         else:
-            self.warnings.append(
-                "Field 'resources' must be a string or list, ignoring"
-            )
+            self.warnings.append("Field 'resources' must be a string or list, ignoring")
             self.frontmatter["resources"] = []
 
     def _validate_body(self):
@@ -263,7 +265,7 @@ class SkillTester:
         skill_dir.mkdir()
 
         # Build frontmatter
-        frontmatter = {
+        frontmatter: Dict[str, Any] = {
             "name": name,
             "description": description,
         }
@@ -279,13 +281,13 @@ class SkillTester:
         content += instructions
 
         skill_path = skill_dir / "SKILL.md"
-        skill_path.write_text(content)
+        skill_path.write_text(content, encoding="utf-8")
 
         # Write resource files
         if resources:
             for filename, file_content in resources.items():
                 resource_path = skill_dir / filename
-                resource_path.write_text(file_content)
+                resource_path.write_text(file_content, encoding="utf-8")
 
         return skill_path
 
@@ -307,14 +309,14 @@ class SkillTester:
         return reports
 
 
-def validate_all_preset_skills() -> Dict[str, List[str]]:
+def validate_all_preset_skills() -> Dict[str, Dict[str, Any]]:
     """Validate all preset skills.
 
     Returns:
         Dictionary mapping skill names to their validation reports.
     """
     preset_dir = Path(__file__).parent
-    reports = {}
+    reports: Dict[str, Dict[str, Any]] = {}
 
     for skill_path in preset_dir.glob("*/SKILL.md"):
         validator = SkillValidator(skill_path)

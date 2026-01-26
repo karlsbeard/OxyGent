@@ -6,10 +6,7 @@ This directory contains preset skills for the OxyGent multi-agent framework. Ski
 
 | Skill | Description |
 |-------|-------------|
-| `code-reviewer` | Review code for quality, security vulnerabilities, and best practices |
-| `web-researcher` | Research topics on the web and synthesize findings |
-| `summarizer` | Summarize long documents, articles, and texts |
-| `technical-writer` | Write technical documentation, guides, and API references |
+| `skill-creator` | Create a new skill (directory + SKILL.md) aligned with this runtime |
 
 ## Using Skills
 
@@ -18,18 +15,24 @@ Skills are automatically discovered from the following directories:
 - `~/.oxygent/skills/` (user-level)
 - `oxygent/preset_skills/` (built-in)
 
-To invoke a skill, use the Skill tool in your agent:
+And also Claude-style directories (if present):
+- `.claude/skills/` (project-local)
+- `~/.claude/skills/` (user-level)
+
+To invoke a skill manually, prefix your query with:
 
 ```
-Skill(name="skill-name")
+/<skill-name> [arguments]
 ```
 
-For example, to review code:
+Example:
+
 ```
-Skill(name="code-reviewer")
+/skill-creator Create a skill that helps analyze OxyGent logs and suggest fixes.
 ```
 
-The agent will then follow the skill's instructions to complete the task.
+In normal usage, skills can also be auto-activated by the selector based on
+the request semantics.
 
 ## Creating Custom Skills
 
@@ -54,13 +57,10 @@ A SKILL.md file consists of YAML frontmatter followed by markdown body:
 ---
 name: my-skill
 description: A brief description for LLM matching
-version: "1.0.0"
-author: Your Name
 
 allowed-tools:
-  - Read
-  - Grep
-  - Write
+  - file_tools
+  - HttpTool
 
 
 timeout: 120
@@ -88,8 +88,6 @@ resources:
 |-------|----------|------|-------------|
 | `name` | ✅ | string | Unique skill identifier (lowercase, hyphens) |
 | `description` | ✅ | string | Short description for LLM semantic matching |
-| `version` | ❌ | string | Semantic version |
-| `author` | ❌ | string | Skill author |
 | `allowed-tools` | ❌ | list/string | Tools available when skill is active |
 | `model` | ❌ | string | Preferred LLM model |
 | `timeout` | ❌ | number | Timeout override in seconds |

@@ -3,11 +3,8 @@
 This package contains built-in skills for the OxyGent framework.
 These skills are automatically discovered and available to all agents.
 
-Available Skills:
-    - code-reviewer: Review code for quality and security
-    - web-researcher: Research topics on the web
-    - summarizer: Summarize long documents
-    - technical-writer: Write technical documentation
+Note: Preset skills should align with the runtime's actual tool/agent
+capabilities. See `oxygent/preset_skills/README.md` for the current list.
 """
 
 from pathlib import Path
