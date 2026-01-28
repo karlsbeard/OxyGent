@@ -5,6 +5,7 @@ from .agents import (
     RAGAgent,
     ReActAgent,
     SSEOxyGent,
+    SkillAgent,
     WorkflowAgent,
 )
 from .api_tools import HttpTool
@@ -26,6 +27,7 @@ __all__ = [
     "ChatAgent",
     "RAGAgent",
     "ReActAgent",
+    "SkillAgent",
     "WorkflowAgent",
     "PlanAndSolveAgent",
     "ParallelAgent",
