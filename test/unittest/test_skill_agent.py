@@ -206,3 +206,40 @@ async def test_manual_overrides_selector(monkeypatch, patched_config, tmp_path):
     req2 = await agent._before_execute(req)
     assert req2.arguments["query"] == "task"
     assert req2.arguments.get("_skill_activation", {}).get("invocation_source") == "user"
+
+
+@pytest.mark.asyncio
+async def test_skill_list_query_returns_metadata_help_without_llm(patched_config, tmp_path):
+    skills_dir = tmp_path / "skills"
+    _write_skill(
+        skills_dir / "demo-skill",
+        name="demo-skill",
+        description="demo",
+        body="Body",
+    )
+
+    mas = DummyMAS()
+    mas.skill_registry = SkillRegistry(skill_dirs=[str(skills_dir)], auto_discover=True)
+
+    agent = SkillAgent(name="agent_master", llm_model="mock_llm", enable_selector=False)
+    agent.set_mas(mas)
+
+    mas.oxy_name_to_oxy["mock_llm"] = MockLLMTool()
+    mas.oxy_name_to_oxy[agent.name] = agent
+
+    req = OxyRequest(
+        arguments={"query": "list skills"},
+        caller="user",
+        caller_category="user",
+        callee=agent.name,
+        callee_category="agent",
+        current_trace_id="trace123",
+        is_send_message=False,
+        is_save_history=False,
+    )
+    req.mas = mas
+
+    req2 = await agent._before_execute(req)
+    resp = await agent._execute(req2)
+    assert resp.state is OxyState.COMPLETED
+    assert "demo-skill" in str(resp.output)

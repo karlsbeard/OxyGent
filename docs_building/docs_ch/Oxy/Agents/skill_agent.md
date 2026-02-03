@@ -92,7 +92,7 @@
 - 生成注入内容：`SkillContent.to_context_injection()`（包含 `[SKILL ACTIVATED: name]` 标记）
 - 替换 `$ARGUMENTS`（若提供 arguments）
 - 严格限制调用源：
-  - `invocation_source=model`：直接 `SKIPPED`（防止模型自发启用技能）
+  - `invocation_source=model`：直接 `SKIPPED`
   - `disable-model-invocation=true`：阻止 selector 激活
   - `user-invocable=false`：阻止用户 `/skill-name` 手动激活
 
@@ -184,3 +184,18 @@ Skill 是“注入上下文”，不是 MAS 里可调用的 tool。为了避免�
 ### Q2：为什么会提示 skill 重名覆盖？
 
 `SkillRegistry` 的搜索路径有优先级，后面的目录会覆盖前面目录的同名 skill（例如 `.claude/skills` 可能覆盖 `.oxygent/skills`）。
+
+### Q3：如何查看当前有哪些 skills？
+
+建议使用显式命令：`list skills`。
+
+这类问题本质是“**列出 metadata**”，不是“激活某个 skill”。在未做专门处理时，可能出现：
+
+1. **模型倾向于调用 Tool**：它看到 toolset 里存在 `Skill`，会尝试用它来“列出技能”，但 `Skill` 设计上需要 `name`，并且模型调用也会被拦截（`SKIPPED`），最终容易输出含糊答案。
+2. **Prompt 依从性/截断**：即使已经注入了“技能目录”，模型也可能忽略该段（尤其在上下文很长时）。
+3. **实际未使用 SkillAgent**：如果 master agent 不是 `SkillAgent`，就不会有 catalog 注入与相关拦截逻辑。
+
+当前实现：
+
+- 用 `/<skill-name> ...` 明确激活。
+- 用 `list skills`：`SkillAgent` 会直接从 `SkillRegistry` 的 metadata 生成用户可读的 skills 列表（不加载全文）。

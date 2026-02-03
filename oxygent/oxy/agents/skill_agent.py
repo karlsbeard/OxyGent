@@ -77,6 +77,12 @@ class SkillAgent(ReActAgent):
         args = (m.group(2) or "").strip()
         return skill_name, args
 
+    def _is_skill_list_query(self, query: str) -> bool:
+        q = (query or "").strip().lower()
+        # Keep this as an explicit command (Codex-style), to avoid accidental matches
+        # in normal user questions.
+        return q == "list skills"
+
     def _build_skill_catalog_prompt(self, oxy_request: OxyRequest) -> str:
         registry = getattr(oxy_request.mas, "skill_registry", None)
         if not registry:
@@ -172,6 +178,22 @@ class SkillAgent(ReActAgent):
 
         raw_query = oxy_request.arguments.get("query", "")
 
+        # 0) Skill list/help queries: answer deterministically from metadata.
+        if self._is_skill_list_query(str(raw_query or "")):
+            if not getattr(registry, "metadata_index", None):
+                try:
+                    registry.discover_all()
+                except Exception:
+                    pass
+            help_text = ""
+            try:
+                help_text = registry.generate_user_help_section()
+            except Exception:
+                help_text = ""
+            if isinstance(help_text, str) and help_text.strip():
+                oxy_request.arguments["_skill_help_output"] = help_text
+                return oxy_request
+
         # 1) Manual activation overrides selector.
         manual = self._parse_manual_invocation(raw_query)
         if manual:
@@ -227,6 +249,12 @@ class SkillAgent(ReActAgent):
             )
 
         return oxy_request
+
+    async def _execute(self, oxy_request: OxyRequest) -> OxyResponse:
+        help_text = oxy_request.arguments.get("_skill_help_output")
+        if isinstance(help_text, str) and help_text.strip():
+            return OxyResponse(state=OxyState.COMPLETED, output=help_text)
+        return await super()._execute(oxy_request)
 
     async def _after_execute(self, oxy_response: OxyResponse) -> OxyResponse:
         oxy_request = oxy_response.oxy_request
