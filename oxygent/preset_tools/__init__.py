@@ -12,6 +12,7 @@ tool_modules = [
     "string_tools",
     "system_tools",
     "shell_tools",
+    "skill_tools",
     "python_tools",
     "image_gen_tools",
 ]

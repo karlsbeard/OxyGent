@@ -226,6 +226,8 @@ __pycache__/
 *.iml
 *.xml
 pyproject.toml*
+.sisyphus/
+.claude/
 
 # 数据文件与日志文件
 *.jsonl

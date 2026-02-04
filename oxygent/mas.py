@@ -82,6 +82,9 @@ class MAS(BaseModel):
     es_client: Optional[AsyncElasticsearch] = Field(None)
     redis_client: Optional[JimdbApRedis] = Field(None)
 
+    # Skills runtime (progressive disclosure registry)
+    skill_registry: Optional[Any] = Field(None, exclude=True)
+
     lock: bool = Field(False)
     active_tasks: dict = Field(default_factory=dict)
     background_tasks: set = Field(default_factory=set)
@@ -223,6 +226,22 @@ class MAS(BaseModel):
             from .core_tools.retrieve_tools import fh as retrieve_fh
 
             self.add_oxy(retrieve_fh)
+
+        # Skills support: registry + tool wiring
+        try:
+            from .oxy.skills import SkillRegistry, SkillTool
+
+            if self.skill_registry is None:
+                self.skill_registry = SkillRegistry(auto_discover=True)
+
+            if "Skill" not in self.oxy_name_to_oxy:
+                self.add_oxy(SkillTool())
+            else:
+                existing = self.oxy_name_to_oxy.get("Skill")
+                if isinstance(existing, SkillTool):
+                    existing.set_registry(self.skill_registry)
+        except Exception as e:
+            logger.warning(f"Failed to initialize skills runtime: {e}")
         # Initialize datebase asynchronously
         await self.init_db()
         # Initialize all oxy instances

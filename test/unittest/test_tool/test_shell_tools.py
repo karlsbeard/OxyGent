@@ -16,10 +16,10 @@ async def test_run_shell_command_success(mock_run):
     mock_result.stdout = "line1\nline2\nline3\nline4\nline5"
     mock_run.return_value = mock_result
 
-    result = await run_shell_command(["echo", "test"])
+    result = await run_shell_command(args=["echo", "test"])
 
     mock_run.assert_called_once_with(
-        ["echo", "test"],
+        "echo test",
         capture_output=True,
         encoding="utf8",
         shell=True,
@@ -38,7 +38,7 @@ async def test_run_shell_command_with_tail(mock_run):
     mock_result.stdout = "line1\nline2\nline3\nline4\nline5\nline6"
     mock_run.return_value = mock_result
 
-    result = await run_shell_command(["echo", "test"], tail=3)
+    result = await run_shell_command(args=["echo", "test"], tail=3)
 
     assert result == "line4\nline5\nline6"
 
@@ -53,10 +53,10 @@ async def test_run_shell_command_with_base_dir(mock_run):
     mock_run.return_value = mock_result
 
     test_dir = "/tmp/test"
-    result = await run_shell_command(["pwd"], base_dir=test_dir)
+    result = await run_shell_command(args=["pwd"], base_dir=test_dir)
 
     mock_run.assert_called_once_with(
-        ["pwd"],
+        "pwd",
         capture_output=True,
         encoding="utf8",
         shell=True,
@@ -75,7 +75,7 @@ async def test_run_shell_command_error(mock_run):
     mock_result.stderr = "Command not found"
     mock_run.return_value = mock_result
 
-    result = await run_shell_command(["nonexistent_command"])
+    result = await run_shell_command(args=["nonexistent_command"])
 
     assert result == "Error: Command not found"
 
@@ -86,7 +86,7 @@ async def test_run_shell_command_exception(mock_run):
     """Test shell command execution with exception"""
     mock_run.side_effect = Exception("Subprocess failed")
 
-    result = await run_shell_command(["test"])
+    result = await run_shell_command(args=["test"])
 
     assert result == "Error: Subprocess failed"
 
@@ -100,7 +100,7 @@ async def test_run_shell_command_empty_output(mock_run):
     mock_result.stdout = ""
     mock_run.return_value = mock_result
 
-    result = await run_shell_command(["echo", "-n", ""])
+    result = await run_shell_command(args=["echo", "-n", ""])
 
     assert result == ""
 
@@ -114,7 +114,7 @@ async def test_run_shell_command_single_line(mock_run):
     mock_result.stdout = "single line"
     mock_run.return_value = mock_result
 
-    result = await run_shell_command(["echo", "single line"])
+    result = await run_shell_command(args=["echo", "single line"])
 
     assert result == "single line"
 
@@ -128,7 +128,7 @@ async def test_run_shell_command_large_tail(mock_run):
     mock_result.stdout = "line1\nline2"
     mock_run.return_value = mock_result
 
-    result = await run_shell_command(["echo", "test"], tail=10)
+    result = await run_shell_command(args=["echo", "test"], tail=10)
 
     assert result == "line1\nline2"
 
@@ -142,6 +142,26 @@ async def test_run_shell_command_zero_tail(mock_run):
     mock_result.stdout = "line1\nline2\nline3"
     mock_run.return_value = mock_result
 
-    result = await run_shell_command(["echo", "test"], tail=0)
+    result = await run_shell_command(args=["echo", "test"], tail=0)
 
     assert result == "line1\nline2\nline3"
+
+
+@pytest.mark.asyncio
+@patch('subprocess.run')
+async def test_run_shell_command_with_command_string(mock_run):
+    mock_result = MagicMock()
+    mock_result.returncode = 0
+    mock_result.stdout = "ok"
+    mock_run.return_value = mock_result
+
+    result = await run_shell_command(command="echo ok")
+    mock_run.assert_called_once_with(
+        "echo ok",
+        capture_output=True,
+        encoding="utf8",
+        shell=True,
+        text=True,
+        cwd=None,
+    )
+    assert result == "ok"
