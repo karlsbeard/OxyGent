@@ -16,10 +16,14 @@
 
 1. **新增 Skills Runtime（progressive disclosure）**：
    - `oxygent/oxy/skills/skill_registry.py`：技能发现/元数据索引/按需加载全文 + 资源目录加载限制
+     - 补充：`DEFAULT_SKILL_DIRS` 中的 preset skills 目录由“相对路径”调整为“按包路径解析”，避免因工作目录不同导致无法发现 preset skills
    - `oxygent/oxy/skills/skill_metadata.py`：metadata 结构（含 disable-model-invocation / user-invocable 等）
    - `oxygent/oxy/skills/skill_content.py`：全文结构、注入格式、environment_modifications 解析
    - `oxygent/oxy/skills/skill_tool.py`：工具名固定为 `Skill`，负责加载全文并返回注入内容
    - `oxygent/oxy/skills/skill_selector.py`：metadata-only 的 selector（额外一次 LLM 调用返回 strict JSON）
+
+   - **新增 preset skills（内置）**：
+     - `oxygent/preset_skills/skill-creator/`：将官方 Codex 仓库中的 `skill-creator` 作为内置 preset skill（SKILL.md / scripts / references 原样保留）
 
 2. **新增 SkillAgent + 导出**：
    - `oxygent/oxy/agents/skill_agent.py`：在 `_before_execute()` 做 catalog 注入 + 激活；在 `_after_execute()` 回填 extra
@@ -28,15 +32,20 @@
 3. **MAS 侧 wiring**：
    - `oxygent/mas.py`：增加 `mas.skill_registry`，并在 `MAS.init()` 中自动创建 `SkillRegistry`、注册/绑定 `SkillTool(name="Skill")`
 
-4. **示例与测试**：
+4. **新增“技能感知”的专用 Tool（方案 B：执行 skill scripts）**：
+   - `oxygent/preset_tools/skill_tools.py`：新增 `skill_tools.run_skill_script`（通过 `SkillRegistry` 解析 skill 路径，并只允许执行该 skill 的 `scripts/` 下脚本）
+   - `oxygent/preset_tools/__init__.py`：注册 `skill_tools` 作为 preset_tools
+
+5. **示例与测试**：
    - `examples/agents/demo_skill_agent.py`：提供对话式 Demo（CLI/可选 Web），并修复运行路径问题
+   - `skill_demo.py`：提供对话式 Demo（CLI/Web 两种模式）演示通过 `/skill-creator ...` + `run_skill_script` 创建 skill
    - `test/unittest/test_skill_registry.py`：覆盖 discovery/precedence/资源目录限制等
    - `test/unittest/test_skill_agent.py`：覆盖手动激活、selector 激活、手动覆盖 selector
+   - `test/unittest/test_tool/test_skill_tools.py`：覆盖 `run_skill_script` 的路径解析/逃逸防护/扩展名白名单等
 
-5. **其他兼容/稳定性修复（非 SkillAgent 核心，但与测试/示例相关）**：
-   - `oxygent/chart/*`：为 `oxygent.chart.*` 提供兼容导入路径（对齐 integration test）
-   - `oxygent/databases/db_redis/jimdb_ap_redis.py`：aioredis import 保护，避免在某些 Python 版本下 import 直接炸测试
-   - `examples/agents/parallel_demo.py`：避免 integration test 启动阻塞式 web service；无环境变量时用 `MockLLM` 离线输出
+6. **稳定性修复（非 SkillAgent 核心，但与运行环境/测试稳定性相关）**：
+   - `oxygent/databases/db_redis/jimdb_ap_redis.py`：aioredis import 保护，避免在 Python 3.13 环境下 `import aioredis` 直接崩溃
+   - `oxygent/oxy/agents/react_agent.py`：修复 ReAct 循环中 user query 重复写入上下文导致的死循环，并增强 JSON 格式错误的纠错反馈
 
 
 ## SkillAgent 能做什么
@@ -102,6 +111,52 @@
 - `extra.environment_modifications`：当前支持解析 `allowed_tools/model/timeout`（由 skill frontmatter 提供）
 
 > 说明：本版本 SkillAgent 主要使用“注入 prompt”，`environment_modifications` 目前仅透出在 `extra`，未对 agent 运行时做强制应用。
+
+
+## 方案 B：执行 Skill 自带脚本（新增 `run_skill_script` Tool）
+
+`SkillAgent/SkillTool` 仍然只负责“发现/激活/注入”，**不自动执行** skill 的 `scripts/`。为了让官方 `skill-creator` 这类 skill 能“按 Codex 方式”落地创建技能，本仓库新增了一个 **Skill 感知且有安全边界** 的 Tool：
+
+- Tool Hub：`skill_tools`
+- Tool：`run_skill_script`
+
+### 行为与安全边界
+
+1. 通过 `SkillRegistry.get_skill(skill_name)` 解析出 `SKILL.md` 路径，得到 skill 根目录 `base_dir`。
+2. 只允许执行 `base_dir/scripts/` 下的文件（禁止 `..` 路径逃逸）。
+3. 支持的脚本类型（白名单）：`.py` / `.sh` / `.zsh`。
+4. 对 `init_skill.py --path <dir>` 这类“输出目录参数”为相对路径的场景，会将 `<dir>` 统一按**进程启动目录（通常是项目根目录）**解析，避免在 skill 目录内产生“套娃路径”。
+
+### 示例：用 `skill-creator` 创建 skill
+
+用户输入（手动激活 skill）：
+
+```text
+/skill-creator init hello-skill --path .claude/skills
+```
+
+随后 agent 在 skill 指引下调用：
+
+```json
+{
+  "tool_name": "run_skill_script",
+  "arguments": {
+    "skill_name": "skill-creator",
+    "script_relpath": "init_skill.py",
+    "args": ["hello-skill", "--path", ".claude/skills"]
+  }
+}
+```
+
+
+## Preset skill：内置 `skill-creator`
+
+为满足“无需手工拷贝即可直接使用官方 agent skills”的诉求，本仓库将官方 `skill-creator` 作为 **preset skill** 内置：
+
+- 位置：`oxygent/preset_skills/skill-creator/`
+- 发现：`SkillRegistry.DEFAULT_SKILL_DIRS` 会自动包含该目录（最低优先级）
+
+优先级规则仍然成立：如果用户在 `.claude/skills/skill-creator`（或 `~/.claude/skills/skill-creator`）存在同名 skill，会覆盖 preset 版本。
 
 
 ## 手动激活语法

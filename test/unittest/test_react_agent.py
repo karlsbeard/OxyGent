@@ -140,6 +140,59 @@ def test_parse_llm_response(react_agent):
 
 
 @pytest.mark.asyncio
+async def test_execute_does_not_repeat_user_query_across_rounds(monkeypatch, react_agent):
+    react_agent.max_react_rounds = 2
+
+    captured_messages = []
+    llm_call_count = {"n": 0}
+
+    async def _fake_call(self, *, callee: str, arguments: dict, **kwargs):
+        if callee == "mock_llm":
+            llm_call_count["n"] += 1
+            captured_messages.append(arguments.get("messages", []))
+            if llm_call_count["n"] == 1:
+                # Looks like a tool call but contains invalid JSON (trailing comma)
+                return OxyResponse(
+                    state=OxyState.COMPLETED,
+                    output='{"tool_name":"dummy_tool","arguments":{,}}',
+                    oxy_request=self,
+                )
+            return OxyResponse(state=OxyState.COMPLETED, output="ok", oxy_request=self)
+        elif callee == "dummy_tool":
+            return OxyResponse(state=OxyState.COMPLETED, output="tool-exec-ok", oxy_request=self)
+        return OxyResponse(state=OxyState.FAILED, output="unknown tool", oxy_request=self)
+
+    monkeypatch.setattr("oxygent.schemas.OxyRequest.call", _fake_call, raising=True)
+
+    req = OxyRequest(
+        arguments={"query": "hello"},
+        caller="user",
+        caller_category="user",
+        current_trace_id="trace123",
+        is_send_message=False,
+        is_save_history=False,
+    )
+    req.mas = react_agent.mas
+    req.callee = react_agent.name
+    req.callee_category = "agent"
+
+    result = await react_agent.execute(req)
+    assert result.state is OxyState.COMPLETED
+    assert llm_call_count["n"] == 2
+
+    # The user query should appear exactly once in each LLM call's message list.
+    for round_messages in captured_messages:
+        assert (
+            sum(
+                1
+                for m in round_messages
+                if m.get("role") == "user" and m.get("content") == "hello"
+            )
+            == 1
+        )
+
+
+@pytest.mark.asyncio
 async def test_execute_trust_mode(react_agent, oxy_request):
     result = await react_agent.execute(oxy_request)
     assert result.state is OxyState.COMPLETED

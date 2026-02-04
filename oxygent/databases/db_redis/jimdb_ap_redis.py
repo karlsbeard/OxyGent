@@ -12,8 +12,24 @@ import traceback
 from functools import wraps
 from typing import Union
 
-from aioredis import Redis
-from aioredis.exceptions import ConnectionError, TimeoutError
+try:
+    from aioredis import Redis  # type: ignore
+    from aioredis.exceptions import ConnectionError, TimeoutError  # type: ignore
+except Exception:  # pragma: no cover
+    # NOTE: `aioredis` is not compatible with Python 3.13 in some environments.
+    # Keep module importable so unit tests can patch `Redis.from_url`.
+    class Redis:  # type: ignore
+        @classmethod
+        def from_url(cls, *args, **kwargs):
+            raise ImportError(
+                "aioredis is unavailable in this environment; install a compatible redis client"
+            )
+
+    class ConnectionError(Exception):
+        pass
+
+    class TimeoutError(Exception):
+        pass
 
 from ...config import Config
 

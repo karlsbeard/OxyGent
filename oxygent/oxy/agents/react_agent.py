@@ -271,7 +271,13 @@ class ReActAgent(LocalAgent):
             if all([tk in ori_response for tk in ["tool_name", "arguments", "{", "}"]]):
                 return LLMResponse(
                     state=LLMState.ERROR_PARSE,
-                    output="JSON cannot be parsed properly, please provide the answer again.",
+                    output=(
+                        "FORMAT_ERROR: Your previous message looks like a tool call, but the JSON is invalid. "
+                        "Reply with ONLY ONE valid JSON object (no markdown/code fences, no extra text). "
+                        "Required keys: tool_name, arguments. "
+                        "In string values, escape newlines as \\n and quotes as \\\". "
+                        "Example: {\"tool_name\":\"write_file\",\"arguments\":{\"path\":\"/abs/path\",\"content\":\"line1\\nline2\"}}"
+                    ),
                     ori_response=ori_response,
                 )
             else:
@@ -290,7 +296,7 @@ class ReActAgent(LocalAgent):
         except Exception as e:
             logger.warning(e)
             return LLMResponse(
-                state=LLMState.ERROR_PARSE, output=e, ori_response=ori_response
+                state=LLMState.ERROR_PARSE, output=str(e), ori_response=ori_response
             )
 
     async def _execute(self, oxy_request: OxyRequest) -> OxyResponse:
@@ -307,6 +313,8 @@ class ReActAgent(LocalAgent):
             OxyResponse: Final response with answer and ReAct memory trace.
         """
         react_memory = Memory()
+        # Add the current user query once; subsequent correction/act loops reuse react_memory.
+        react_memory.add_message(Message.user_message(oxy_request.get_query()))
         for current_round in range(self.max_react_rounds + 1):
             # Build complete message context: instruction + short memory + query + react memory
             temp_memory = Memory()
@@ -316,8 +324,7 @@ class ReActAgent(LocalAgent):
             temp_memory.add_messages(
                 Message.dict_list_to_messages(oxy_request.get_short_memory())
             )
-            # Add current query and ReAct history
-            temp_memory.add_message(Message.user_message(oxy_request.get_query()))
+            # Add ReAct history (includes the user query as the first message)
             temp_memory.add_messages(react_memory.messages)
 
             full_memory = temp_memory.to_dict_list()
@@ -400,7 +407,7 @@ class ReActAgent(LocalAgent):
                         "trust_mode" in llm_response.output
                         and llm_response.output["trust_mode"] == 1
                     ):
-                        result_payload = observation.to_str(is_prefix_included=False)
+                        result_payload = observation.to_str(is_prefix_included=True)
                         return OxyResponse(
                             state=OxyState.COMPLETED,
                             output=result_payload,
@@ -424,7 +431,17 @@ class ReActAgent(LocalAgent):
                 react_memory.add_message(
                     Message.assistant_message(llm_response.ori_response)
                 )
-                react_memory.add_message(Message.user_message(llm_response.output))
+                react_memory.add_message(
+                    Message.system_message(
+                        f"{str(llm_response.output)}\n\n"
+                        "(This is system feedback about output format. Do NOT attribute it to the user.)"
+                    )
+                )
+                react_memory.add_message(
+                    Message.user_message(
+                        "Please output ONLY the corrected JSON object now (no markdown, no extra keys)."
+                    )
+                )
 
         # Fallback mechanism when max rounds reached
         # Extract tool call results for final summary

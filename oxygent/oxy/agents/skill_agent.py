@@ -79,9 +79,38 @@ class SkillAgent(ReActAgent):
 
     def _is_skill_list_query(self, query: str) -> bool:
         q = (query or "").strip().lower()
-        # Keep this as an explicit command (Codex-style), to avoid accidental matches
-        # in normal user questions.
-        return q == "list skills"
+        q = re.sub(r"\s+", " ", q)
+        q = q.strip(" \t\r\n\"'`.,;:!?()[]{}")
+
+        # Deterministic skill listing should be triggered only for clear "list my skills" intents.
+        exact = {
+            "list skills",
+            "show skills",
+            "skill list",
+            "skills list",
+            "what skills do you have",
+            "what skills do u have",
+            "what skill do you have",
+            "what skill do u have",
+            "which skills do you have",
+            "which skills do u have",
+            "available skills",
+            "skills available",
+            "你有什么技能",
+            "你有哪些技能",
+            "技能列表",
+        }
+        if q in exact:
+            return True
+
+        # Lightweight pattern matching for short questions.
+        if len(q) <= 64:
+            if re.match(r"^(what|which)\s+skills?\b.*\b(do\s+)?(you|u)\s+have\b", q):
+                return True
+            if re.match(r"^what\s+skills?\b.*\bavailable\b", q):
+                return True
+
+        return False
 
     def _build_skill_catalog_prompt(self, oxy_request: OxyRequest) -> str:
         registry = getattr(oxy_request.mas, "skill_registry", None)
@@ -109,6 +138,22 @@ class SkillAgent(ReActAgent):
             "(Skill activation is system-driven; do not call the Skill tool directly.)",
             "",
         ]
+
+        # If the runtime provides the script runner tool, hint it explicitly.
+        try:
+            if (
+                hasattr(self, "permitted_tool_name_list")
+                and "run_skill_script" in (self.permitted_tool_name_list or [])
+            ):
+                lines.extend(
+                    [
+                        "Tip: If an activated skill asks you to run a bundled script under its scripts/ directory,",
+                        "use the tool `run_skill_script` (skill_name + script_relpath + args) instead of manual path guessing.",
+                        "",
+                    ]
+                )
+        except Exception:
+            pass
 
         for s in shown:
             flags: list[str] = []

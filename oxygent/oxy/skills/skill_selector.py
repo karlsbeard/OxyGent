@@ -31,7 +31,39 @@ class SkillSelection:
     reason: str
 
 
-_WORD_RE = re.compile(r"[a-zA-Z0-9_\-]{2,}")
+_WORD_RE = re.compile(r"[a-zA-Z0-9_\-]{2,}|[\u4e00-\u9fff]{2,}")
+
+
+_SKILL_CREATION_INTENT_RE = re.compile(
+    r"(创建|新建|生成|制作|编写|写|搭建|开发).{0,20}(技能|skill|SKILL|SKILL\.md)",
+    re.IGNORECASE,
+)
+_SKILL_CREATION_INTENT_EN_RE = re.compile(
+    r"\b(create|make|build|generate|init|initialize|scaffold|draft|write)\b.*\bskills?\b",
+    re.IGNORECASE,
+)
+
+
+def _looks_like_skill_creation_request(query: str) -> bool:
+    q = (query or "").strip()
+    if not q:
+        return False
+
+    # Manual invocation already handled elsewhere (/skill-name ...), but keep robust.
+    if q.lstrip().startswith("/skill-creator"):
+        return True
+
+    if _SKILL_CREATION_INTENT_RE.search(q):
+        return True
+
+    if _SKILL_CREATION_INTENT_EN_RE.search(q):
+        return True
+
+    # Common shorthand: "做个 skill" / "写个 skill" / "new skill"
+    if re.search(r"\bnew\b.*\bskills?\b", q, re.IGNORECASE):
+        return True
+
+    return False
 
 
 def _tokenize(text: str) -> set[str]:
@@ -75,6 +107,9 @@ Rules:
 - Select a skill only if it meaningfully improves execution.
 - If none apply, return selected_skill=null with confidence 0.
 - Use confidence in [0,1].
+
+Notes:
+- The user may ask in languages different from the skill descriptions (e.g., Chinese). Use your understanding.
 """
         )
     )
@@ -147,6 +182,17 @@ async def select_skill(
 
     if not skills:
         return SkillSelection(selected_skill=None, confidence=0.0, reason="no_skills")
+
+    # Heuristic short-circuit for very common intents to improve determinism and reduce LLM calls.
+    # This is especially useful when query-language and metadata-language differ.
+    if _looks_like_skill_creation_request(query):
+        skill_names = {s.name for s in skills}
+        if "skill-creator" in skill_names:
+            return SkillSelection(
+                selected_skill="skill-creator",
+                confidence=0.99,
+                reason="heuristic:skill_creation",
+            )
 
     ranked = rank_skills_by_keyword_overlap(query, skills)
     candidates = ranked[: max(1, max_candidates)]

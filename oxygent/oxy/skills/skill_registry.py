@@ -36,8 +36,9 @@ class SkillRegistry:
     """
 
     # Discovery precedence: later entries override earlier ones on name collision.
+    _PACKAGE_OXYGENT_DIR = Path(__file__).resolve().parents[2]
     DEFAULT_SKILL_DIRS = [
-        "oxygent/preset_skills/",  # Built-in preset skills (lowest priority)
+        str(_PACKAGE_OXYGENT_DIR / "preset_skills"),  # Built-in preset skills (lowest priority)
         "~/.oxygent/skills/",  # User-level OxyGent skills
         ".oxygent/skills/",  # Project-local OxyGent skills
         "~/.claude/skills/",  # User-level Claude skills
