@@ -56,6 +56,14 @@ def test_discover_precedence_later_overrides_earlier(tmp_path):
     assert reg.get_skill("dup").description == "from-2"
 
 
+def test_default_skill_dir_precedence_project_over_personal():
+    dirs = SkillRegistry.DEFAULT_SKILL_DIRS
+
+    # Later entries override earlier ones.
+    assert dirs.index(".claude/skills/") > dirs.index("~/.claude/skills/")
+    assert dirs.index(".oxygent/skills/") > dirs.index("~/.oxygent/skills/")
+
+
 def test_discover_requires_valid_frontmatter(tmp_path):
     d = tmp_path / "skills"
     d.mkdir()

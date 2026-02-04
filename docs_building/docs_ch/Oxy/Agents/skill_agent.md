@@ -9,43 +9,22 @@
 
 > 重要：本实现 **不允许模型直接调用 `Skill` 工具**（`SkillTool` 会阻止 `invocation_source=model`），避免“模型自发开技能”。
 
+同时，为了让官方 Codex 风格的技能（例如 `skill-creator`、`agent-browser`）更“开箱即用”，`SkillAgent` **默认启用 `shell_tools`**（提供 `run_shell_command`），用于执行技能工作流中描述的本地 CLI 命令。
 
-## 本次改动总览（仓库变更摘要）
+> 提醒：**不建议关闭 `shell_tools`**。大量 skills 的工作流都依赖“执行本地命令”这一步（例如 `agent-browser` 需要调用本地 CLI），如果关闭，SkillAgent 往往只能注入指引但无法落地执行，导致 **大概率无法正常使用**。
 
-本次落地 SkillAgent/Skills Runtime 相关改动主要包括：
 
-1. **新增 Skills Runtime（progressive disclosure）**：
-   - `oxygent/oxy/skills/skill_registry.py`：技能发现/元数据索引/按需加载全文 + 资源目录加载限制
-     - 补充：`DEFAULT_SKILL_DIRS` 中的 preset skills 目录由“相对路径”调整为“按包路径解析”，避免因工作目录不同导致无法发现 preset skills
-   - `oxygent/oxy/skills/skill_metadata.py`：metadata 结构（含 disable-model-invocation / user-invocable 等）
-   - `oxygent/oxy/skills/skill_content.py`：全文结构、注入格式、environment_modifications 解析
-   - `oxygent/oxy/skills/skill_tool.py`：工具名固定为 `Skill`，负责加载全文并返回注入内容
-   - `oxygent/oxy/skills/skill_selector.py`：metadata-only 的 selector（额外一次 LLM 调用返回 strict JSON）
+## 本次更新概览（新增能力）
 
-   - **新增 preset skills（内置）**：
-     - `oxygent/preset_skills/skill-creator/`：将官方 Codex 仓库中的 `skill-creator` 作为内置 preset skill（SKILL.md / scripts / references 原样保留）
+这一节用“用户视角”概括 SkillAgent 带来的新能力；如果你需要二次开发或排查问题，可以把它当作索引再跳到后面的实现细节。
 
-2. **新增 SkillAgent + 导出**：
-   - `oxygent/oxy/agents/skill_agent.py`：在 `_before_execute()` 做 catalog 注入 + 激活；在 `_after_execute()` 回填 extra
-   - `oxygent/oxy/agents/__init__.py`、`oxygent/oxy/__init__.py`：导出 `SkillAgent`
-
-3. **MAS 侧 wiring**：
-   - `oxygent/mas.py`：增加 `mas.skill_registry`，并在 `MAS.init()` 中自动创建 `SkillRegistry`、注册/绑定 `SkillTool(name="Skill")`
-
-4. **新增“技能感知”的专用 Tool（方案 B：执行 skill scripts）**：
-   - `oxygent/preset_tools/skill_tools.py`：新增 `skill_tools.run_skill_script`（通过 `SkillRegistry` 解析 skill 路径，并只允许执行该 skill 的 `scripts/` 下脚本）
-   - `oxygent/preset_tools/__init__.py`：注册 `skill_tools` 作为 preset_tools
-
-5. **示例与测试**：
-   - `examples/agents/demo_skill_agent.py`：提供对话式 Demo（CLI/可选 Web），并修复运行路径问题
-   - `skill_demo.py`：提供对话式 Demo（CLI/Web 两种模式）演示通过 `/skill-creator ...` + `run_skill_script` 创建 skill
-   - `test/unittest/test_skill_registry.py`：覆盖 discovery/precedence/资源目录限制等
-   - `test/unittest/test_skill_agent.py`：覆盖手动激活、selector 激活、手动覆盖 selector
-   - `test/unittest/test_tool/test_skill_tools.py`：覆盖 `run_skill_script` 的路径解析/逃逸防护/扩展名白名单等
-
-6. **稳定性修复（非 SkillAgent 核心，但与运行环境/测试稳定性相关）**：
-   - `oxygent/databases/db_redis/jimdb_ap_redis.py`：aioredis import 保护，避免在 Python 3.13 环境下 `import aioredis` 直接崩溃
-   - `oxygent/oxy/agents/react_agent.py`：修复 ReAct 循环中 user query 重复写入上下文导致的死循环，并增强 JSON 格式错误的纠错反馈
+1. **技能“可发现、可按需加载”**：只扫描技能元数据（name/description），需要时再加载 `SKILL.md` 正文与资源（progressive disclosure），减少无谓的上下文开销。
+2. **两种激活方式**：
+   - **手动激活**：用户通过 `/<skill-name> [arguments]` 明确使用某个技能。
+   - **自动激活（可选）**：系统通过 selector（额外一次 LLM 选择）在候选技能中选择最多一个并激活。
+3. **更安全的“脚本执行”通道（可选）**：提供 `run_skill_script`，只允许运行对应 skill 的 `scripts/` 目录下脚本，并对扩展名做白名单限制。
+4. **开箱即用的内置技能**：内置 preset skills（例如 `skill-creator`），无需手工拷贝即可使用；同时保持同名覆盖规则，方便用户自定义版本优先。
+5. **配套 Demo / 单测与稳定性改进**：提供对话式示例与测试覆盖，并修复若干与运行环境/测试稳定性相关的问题。
 
 
 ## SkillAgent 能做什么
@@ -54,6 +33,7 @@
 2. **让系统通过 selector 自动选择（最多一个）技能并激活**（可开关）
 3. **将技能正文/资源作为上下文注入**，使后续对话/工具调用遵循技能工作流
 4. **把选中/激活信息写入 `OxyResponse.extra`**，便于日志与 UI 展示
+5. **默认可调用 `run_shell_command` 执行本地 CLI 命令**：便于按技能工作流落地（例如 `agent-browser` 需要执行命令行工具）
 
 
 ## SkillAgent 的实现细节（关键流程）
@@ -156,7 +136,19 @@
 - 位置：`oxygent/preset_skills/skill-creator/`
 - 发现：`SkillRegistry.DEFAULT_SKILL_DIRS` 会自动包含该目录（最低优先级）
 
-优先级规则仍然成立：如果用户在 `.claude/skills/skill-creator`（或 `~/.claude/skills/skill-creator`）存在同名 skill，会覆盖 preset 版本。
+### 同名 skill 的覆盖优先级（Codex/Claude Code 规则）
+
+当多个目录下存在同名 skill 时，**项目（project-local）优先级最高**，其次才是个人（personal），最后才是内置 preset。
+
+默认从低到高的覆盖顺序为：
+
+1. `oxygent/preset_skills/`（最低）
+2. `~/.oxygent/skills/`
+3. `~/.claude/skills/`
+4. `.oxygent/skills/`
+5. `.claude/skills/`（最高）
+
+因此：如果你在项目里提供了 `.claude/skills/skill-creator`（或 `.oxygent/skills/skill-creator`），将覆盖 `~/.claude/skills` / `~/.oxygent/skills` 里的同名 skill，以及内置 preset 版本。
 
 
 ## 手动激活语法
@@ -202,6 +194,7 @@
 | `selector_max_candidates` | int | `30` | 送入 selector 的候选技能数 |
 | `selector_min_confidence` | float | `0.6` | 自动激活阈值 |
 | `selector_llm_model` | str\|None | `None` | selector 用的 LLM，默认用 agent 的 `llm_model` |
+| `enable_shell_tools` | bool | `True` | 是否默认启用 `shell_tools`（`run_shell_command`），用于执行技能工作流中的本地命令；如需关闭可设为 `False`，或通过 `except_tools` 禁用具体命令 |
 
 
 ## 使用示例
@@ -210,6 +203,12 @@
 
 ```bash
 python examples/agents/demo_skill_agent.py
+```
+
+### 1.1）skill-creator + agent-browser Demo（推荐）
+
+```bash
+python examples/agents/demo_skill_creator.py
 ```
 
 ### 2）Web 对话（可选）
@@ -238,7 +237,9 @@ Skill 是“注入上下文”，不是 MAS 里可调用的 tool。为了避免�
 
 ### Q2：为什么会提示 skill 重名覆盖？
 
-`SkillRegistry` 的搜索路径有优先级，后面的目录会覆盖前面目录的同名 skill（例如 `.claude/skills` 可能覆盖 `.oxygent/skills`）。
+`SkillRegistry` 的搜索路径有优先级：**项目（project-local）覆盖个人（personal）**，同级目录下“后面的覆盖前面的”。
+
+默认优先级见上文「同名 skill 的覆盖优先级」。
 
 ### Q3：如何查看当前有哪些 skills？
 
