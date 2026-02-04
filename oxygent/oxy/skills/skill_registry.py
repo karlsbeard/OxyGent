@@ -37,12 +37,14 @@ class SkillRegistry:
 
     # Discovery precedence: later entries override earlier ones on name collision.
     _PACKAGE_OXYGENT_DIR = Path(__file__).resolve().parents[2]
+    # Priority (low -> high): preset < personal < project.
+    # This follows the Codex/Claude Code convention: project-local skills override personal skills.
     DEFAULT_SKILL_DIRS = [
         str(_PACKAGE_OXYGENT_DIR / "preset_skills"),  # Built-in preset skills (lowest priority)
-        "~/.oxygent/skills/",  # User-level OxyGent skills
+        "~/.oxygent/skills/",  # Personal OxyGent skills
+        "~/.claude/skills/",  # Personal Claude/Codex skills
         ".oxygent/skills/",  # Project-local OxyGent skills
-        "~/.claude/skills/",  # User-level Claude skills
-        ".claude/skills/",  # Project-local Claude skills (highest priority)
+        ".claude/skills/",  # Project-local Claude/Codex skills (highest priority)
     ]
 
     # Directories inside a skill that must not be treated as separate skills.

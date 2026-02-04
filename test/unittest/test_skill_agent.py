@@ -18,6 +18,11 @@ class DummyMAS:
         self.background_tasks = set()
         self.skill_registry = None
 
+    def add_oxy(self, oxy):
+        if oxy.name in self.oxy_name_to_oxy:
+            raise Exception(f"oxy [{oxy.name}] already exists.")
+        self.oxy_name_to_oxy[oxy.name] = oxy
+
     @staticmethod
     def is_agent(name: str) -> bool:
         return name.startswith("agent_")
@@ -280,3 +285,28 @@ async def test_skill_list_query_natural_language_alias_returns_metadata_help(pat
     resp = await agent._execute(req2)
     assert resp.state is OxyState.COMPLETED
     assert "demo-skill" in str(resp.output)
+
+
+@pytest.mark.asyncio
+async def test_skill_agent_auto_enables_shell_tools_by_default(patched_config, tmp_path):
+    skills_dir = tmp_path / "skills"
+    _write_skill(
+        skills_dir / "demo-skill",
+        name="demo-skill",
+        description="demo",
+        body="Body",
+    )
+
+    mas = DummyMAS()
+    mas.skill_registry = SkillRegistry(skill_dirs=[str(skills_dir)], auto_discover=True)
+
+    agent = SkillAgent(name="agent_master", llm_model="mock_llm", enable_selector=False)
+    agent.set_mas(mas)
+
+    mas.oxy_name_to_oxy["mock_llm"] = MockLLMTool()
+    mas.oxy_name_to_oxy[agent.name] = agent
+
+    await agent.init()
+    assert "shell_tools" in mas.oxy_name_to_oxy
+    assert "run_shell_command" in mas.oxy_name_to_oxy
+    assert "run_shell_command" in agent.permitted_tool_name_list

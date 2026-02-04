@@ -66,6 +66,49 @@ class SkillAgent(ReActAgent):
         description="Optional LLM model to use for selection. Defaults to llm_model.",
     )
 
+    enable_shell_tools: bool = Field(
+        True,
+        description=(
+            "Whether to auto-register and enable preset shell_tools (run_shell_command). "
+            "This makes Codex-style skills (e.g. agent-browser) practical by default."
+        ),
+    )
+
+    async def init(self):
+        await self._ensure_shell_tools()
+        await super().init()
+
+    async def _ensure_shell_tools(self) -> None:
+        if not self.enable_shell_tools:
+            return
+        if "shell_tools" in (self.except_tools or []):
+            return
+        mas = getattr(self, "mas", None)
+        if not mas:
+            return
+        if not getattr(mas, "oxy_name_to_oxy", None):
+            return
+
+        if "shell_tools" not in (self.tools or []):
+            self.tools.append("shell_tools")
+
+        try:
+            if "shell_tools" not in mas.oxy_name_to_oxy:
+                from oxygent.preset_tools.shell_tools import shell_tools
+
+                shell_tools.set_mas(mas)
+                if hasattr(mas, "add_oxy"):
+                    mas.add_oxy(shell_tools)
+                else:
+                    mas.oxy_name_to_oxy[shell_tools.name] = shell_tools
+
+            if "run_shell_command" not in mas.oxy_name_to_oxy:
+                hub = mas.oxy_name_to_oxy.get("shell_tools")
+                if hub is not None and hasattr(hub, "init"):
+                    await hub.init()
+        except Exception as e:
+            logger.warning(f"Failed to auto-enable shell_tools: {e}")
+
     def _parse_manual_invocation(self, query: str) -> Optional[Tuple[str, str]]:
         q = (query or "").strip()
         if not q.startswith("/") or q.startswith("//"):
